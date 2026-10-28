@@ -1,0 +1,47 @@
+{
+  "Lieblingsvideospiel": {
+    "sender": "Unbekannte Nummer",
+    "text": "Hallo {name}! Wir haben gesehen, dass du {wert} spielst. Du kannst heute ein seltenes Item kostenlos bekommen. Melde dich über unseren Link an und sichere dir deine Belohnung!",
+    "warning_signs": [
+      "Unbekannter Absender",
+      "Du sollst dich über einen Link anmelden",
+      "Zeitdruck"
+    ]
+  },
+  "Lieblingssport": {
+    "sender": "Unbekannte Nummer",
+    "text": "Hallo {name}! Dein Training für {wert} wurde verschoben. Öffne den Link und bestätige deine Teilnahme, damit dein Platz im Team nicht verloren geht.",
+    "warning_signs": [
+      "Unbekannter Absender",
+      "Zeitdruck",
+      "Du sollst dich über einen Link anmelden"
+    ]
+  },
+  "Lieblingsmusiker:in": {
+    "sender": "Unbekannte Nummer",
+    "text": "{wert} hat ein geheimes Video veröffentlicht! Klicke auf den Link und melde dich an, um es vor allen anderen zu sehen.",
+    "warning_signs": [
+      "Unbekannter Absender",
+      "Gewinn, obwohl du nirgends mitgemacht hast",
+      "Du sollst dich über einen Link anmelden"
+    ]
+  },
+  "Schulname": {
+    "sender": "{wert}",
+    "text": "Hallo {name}! Dein Schul-Dokument kann nicht geöffnet werden. Melde dich hier erneut mit deinem Schulkonto an, damit du deine Aufgabe rechtzeitig abgeben kannst.",
+    "warning_signs": [
+      "Absender gibt sich als deine Schule aus",
+      "Du sollst dich über einen Link anmelden",
+      "Zeitdruck"
+    ]
+  },
+  "Lieblingstier": {
+    "sender": "Unbekannte Nummer",
+    "text": "Hallo {name}! Wir verlosen heute ein Überraschungspaket für alle Fans von: {wert}. Du hast gewonnen! Gib über den Link deine Adresse ein, damit wir es dir schicken können.",
+    "warning_signs": [
+      "Unbekannter Absender",
+      "Gewinn, obwohl du nirgends mitgemacht hast",
+      "Du sollst deine Adresse eingeben"
+    ]
+  }
+}
