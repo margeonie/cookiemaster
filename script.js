@@ -1,5 +1,6 @@
 const iconPool = ['🧑‍🎓', '🧑‍💻', '👩‍🏫', '🧑‍🚀', '👩‍🎤', '🧑‍⚕️', '🧑‍🌾', '🧑‍🏫', '👩‍💼', '🧑‍🎨'];
 const PERSONA_COUNT_INTERVAL_MS = 500;
+const STORED_PASS_KEY = 'cookiemaster.freigaben';
 let freigabenData = null;
 let freigabenError = null;
 let personaCountTimer = null;
@@ -241,6 +242,95 @@ async function readPassJsonFile() {
   return response.json();
 }
 
+// Hochgeladene Pässe werden im Browser gespeichert, damit auch die Detailseite sie kennt.
+function readStoredPassData() {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(STORED_PASS_KEY) || 'null');
+    return stored && stored.data ? stored : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function storePassData(data) {
+  try {
+    window.localStorage.setItem(STORED_PASS_KEY, JSON.stringify({ savedAt: new Date().toISOString(), data }));
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+// Zuletzt hochgeladene Pässe, sonst die Beispieldaten aus freigaben.json
+async function readPassData() {
+  const stored = readStoredPassData();
+  if (stored) return stored;
+  return { data: await readPassJsonFile(), savedAt: null };
+}
+
+function formatSavedAt(savedAt) {
+  return new Intl.DateTimeFormat('de-DE', {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+  }).format(new Date(savedAt));
+}
+
+async function scanUploadedPasses(gruenFile, orangeFile) {
+  const csvData = await readCsvFile();
+  const headers = csvData.headers || [];
+  const nameColumn = getPersonaNameColumn(headers);
+  const colorColumn = headers.find((header) => normalizePersonName(header) === 'farbe');
+  if (!colorColumn) throw new Error('CSV-Spalte „Farbe“ fehlt.');
+  const featureNames = getPersonaFeatures(headers);
+
+  // Reihenfolge der Personas wie in der CSV = Reihenfolge auf dem Pass
+  const passes = [['grün', gruenFile], ['orange', orangeFile]].map(([colorKey, file]) => {
+    const rows = (csvData.rows || []).filter((row) => normalizePersonName(row[colorColumn]) === colorKey);
+    if (!rows.length) throw new Error(`Keine Personas mit der Farbe „${colorKey}“ in Personas.csv.`);
+    return { color: rows[0][colorColumn], file, personNames: rows.map((row) => row[nameColumn]) };
+  });
+
+  updateUploadStatusBar('Bilderkennung wird geladen…');
+  await window.PassScanner.loadOpenCv();
+  updateUploadStatusBar('Datensammelpässe werden ausgewertet…');
+  // Kurz warten, damit die Statusmeldung vor der Rechenarbeit angezeigt wird
+  await new Promise((resolve) => window.setTimeout(resolve, 50));
+  const { data, uncertain, results } = await window.PassScanner.scanPasses(passes, featureNames);
+  renderScanReview(results, featureNames);
+  return { data, uncertain, saved: storePassData(data) };
+}
+
+function renderScanReview(results, featureNames) {
+  const review = document.getElementById('scan-review');
+  const tables = document.getElementById('scan-review-tables');
+  if (!review || !tables) return;
+  const cellLabel = { X: '✓', '!': '?', '': '', '-': '–' };
+  const cellClass = { X: 'marked', '!': 'uncertain' };
+
+  tables.innerHTML = Object.entries(results).map(([color, result]) => `
+    <div class="pass-preview-card">
+      <h3>${escapeHtml(color)}</h3>
+      <div class="table-wrap">
+        <table class="pass-matrix-table">
+          <thead>
+            <tr><th>Persona</th>${featureNames.map((feature) => `<th>${escapeHtml(feature)}</th>`).join('')}</tr>
+          </thead>
+          <tbody>
+            ${result.matrix.slice(1).map(([person, ...values]) => `
+              <tr>
+                <th>${escapeHtml(person)}${result.struck.includes(person) ? ' (gestrichen)' : ''}</th>
+                ${values.map((value) => `<td class="${cellClass[value] || ''}">${cellLabel[value]}</td>`).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `).join('');
+  tables.insertAdjacentHTML('beforeend',
+    '<p class="pass-preview-note">✓ = freigegeben, ? = unsicher (zählt als nicht freigegeben), – = Persona spielt nicht mit</p>');
+  review.hidden = false;
+}
+
 function normalizePassData(rawPassData, csvData) {
   const headers = csvData.headers || [];
   const nameColumn = getPersonaNameColumn(headers);
@@ -380,7 +470,7 @@ function buildMismatchMessage(mismatch) {
 async function loadFreshPassData() {
   try {
     const csvData = await readCsvFile();
-    const rawPassData = await readPassJsonFile();
+    const { data: rawPassData, savedAt } = await readPassData();
     const normalized = normalizePassData(rawPassData, csvData);
 
     const hasMismatches = (
@@ -393,7 +483,7 @@ async function loadFreshPassData() {
     const message = hasMismatches ? buildMismatchMessage(normalized) : '';
     if (message) console.warn(message);
 
-    return { ok: true, data: normalized.data, warning: message };
+    return { ok: true, data: normalized.data, warning: message, savedAt };
   } catch (error) {
     return {
       ok: false,
@@ -416,7 +506,7 @@ async function renderOverviewPage({ animateCounts = false } = {}) {
   const shouldAnimateCounts = animateCounts && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const colorFilter = document.getElementById('persona-color-filter');
   const resetButton = document.getElementById('reset-freigaben');
-  const reloadButton = document.getElementById('reload-freigaben');
+  const loadButton = document.getElementById('load-freigaben');
 
   function applyColorFilter() {
     const selectedColor = normalizePersonName(colorFilter?.value || 'alle');
@@ -445,10 +535,17 @@ async function renderOverviewPage({ animateCounts = false } = {}) {
       await renderOverviewPage();
     };
   }
-  if (reloadButton) {
-    reloadButton.onclick = async () => {
+  if (loadButton) {
+    loadButton.onclick = async () => {
       preparePersonaAudio();
-      reloadButton.disabled = true;
+      const gruenFile = document.getElementById('pass-gruen')?.files[0];
+      const orangeFile = document.getElementById('pass-orange')?.files[0];
+      if (Boolean(gruenFile) !== Boolean(orangeFile)) {
+        updateUploadStatusBar('Bitte beide Datensammelpässe auswählen – den grünen und den orangen.', 'error');
+        return;
+      }
+
+      loadButton.disabled = true;
       cancelPersonaCountAnimation();
       list.querySelectorAll('.persona-card').forEach((card) => {
         const badge = card.querySelector('.phishing-badge');
@@ -460,12 +557,32 @@ async function renderOverviewPage({ animateCounts = false } = {}) {
         card.dataset.currentCount = '0';
         card.classList.add('count-complete');
       });
-      updateUploadStatusBar('Freigaben werden neu geladen…');
       try {
+        let scan = null;
+        if (gruenFile && orangeFile) {
+          try {
+            scan = await scanUploadedPasses(gruenFile, orangeFile);
+          } catch (error) {
+            updateUploadStatusBar(`Auswertung fehlgeschlagen: ${error.message || error}`, 'error');
+            await renderOverviewPage();
+            return;
+          }
+        } else {
+          updateUploadStatusBar('Freigaben werden neu geladen…');
+        }
+
         await loadPassStateForDisplay();
+        if (scan && !scan.saved) {
+          // Ohne Browser-Speicher nur für diese Seite verwenden
+          freigabenData = scan.data;
+          freigabenError = null;
+          updateUploadStatusBar('Ausgewertet – konnte im Browser nicht gespeichert werden, die Detailseiten zeigen daher die Beispieldaten.', 'warning');
+        } else if (scan && scan.uncertain.length) {
+          updateUploadStatusBar(`Ausgewertet – bitte prüfen (zählt als nicht freigegeben): ${scan.uncertain.join(', ')}`, 'warning');
+        }
         await renderOverviewPage({ animateCounts: true });
       } finally {
-        reloadButton.disabled = false;
+        loadButton.disabled = false;
       }
     };
   }
@@ -862,11 +979,14 @@ async function loadPassStateForDisplay() {
     }
 
     freigabenData = result.data;
+    const source = result.savedAt
+      ? `Datensammelpässe vom ${formatSavedAt(result.savedAt)} geladen`
+      : 'Beispieldaten geladen';
     if (result.warning) {
-      status.textContent = 'Datensammelpass geladen – einige Einträge sind ungültig oder fehlen.';
+      status.textContent = `${source} – einige Einträge sind ungültig oder fehlen.`;
       status.className = 'status-bar warning';
     } else {
-      status.textContent = 'Datensammelpass geladen';
+      status.textContent = source;
       status.className = 'status-bar active';
     }
   } catch (error) {

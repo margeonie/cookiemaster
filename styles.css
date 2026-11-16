@@ -80,7 +80,7 @@ h1 {
 
 .upload-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
   gap: 1rem;
 }
 
@@ -95,12 +95,21 @@ h1 {
   font-weight: 700;
 }
 
-.file-input-wrap input {
-  width: 100%;
+.file-input-green {
+  background: var(--persona-green);
 }
 
-#uploadPassBtn,
-#uploadPassBtnDetail {
+.file-input-orange {
+  background: var(--persona-orange);
+}
+
+.file-input-wrap input {
+  width: 100%;
+  font: inherit;
+  font-weight: 400;
+}
+
+.primary-button {
   appearance: none;
   border: none;
   border-radius: 14px;
@@ -110,6 +119,26 @@ h1 {
   font-weight: 700;
   cursor: pointer;
   padding: 1rem 1.4rem;
+}
+
+.primary-button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.scan-review summary {
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.scan-review[hidden] {
+  display: none;
+}
+
+.scan-review-tables {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
 }
 
 .status-row {
@@ -643,7 +672,7 @@ h1 {
 }
 
 @media (max-width: 620px) {
-  .upload-panel {
+  .upload-grid {
     grid-template-columns: 1fr;
   }
 
