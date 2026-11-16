@@ -1,6 +1,6 @@
 {
   "Lieblingsvideospiel": {
-    "sender": "Unbekannte Nummer",
+    "sender": "Discord",
     "text": "Hallo {name}! Wir haben gesehen, dass du {wert} spielst. Du kannst heute ein seltenes Item kostenlos bekommen. Melde dich über unseren Link an und sichere dir deine Belohnung!",
     "warning_signs": [
       "Unbekannter Absender",
@@ -9,7 +9,7 @@
     ]
   },
   "Lieblingssport": {
-    "sender": "Unbekannte Nummer",
+    "sender": "Dein {wert} Verein",
     "text": "Hallo {name}! Dein Training für {wert} wurde verschoben. Öffne den Link und bestätige deine Teilnahme, damit dein Platz im Team nicht verloren geht.",
     "warning_signs": [
       "Unbekannter Absender",
@@ -18,7 +18,7 @@
     ]
   },
   "Lieblingsmusiker:in": {
-    "sender": "Unbekannte Nummer",
+    "sender": "XX_FM2_deinRadiosenderXxX",
     "text": "{wert} hat ein geheimes Video veröffentlicht! Klicke auf den Link und melde dich an, um es vor allen anderen zu sehen.",
     "warning_signs": [
       "Unbekannter Absender",
@@ -36,7 +36,7 @@
     ]
   },
   "Lieblingstier": {
-    "sender": "Unbekannte Nummer",
+    "sender": "Haustiershop6767",
     "text": "Hallo {name}! Wir verlosen heute ein Überraschungspaket für alle Fans von: {wert}. Du hast gewonnen! Gib über den Link deine Adresse ein, damit wir es dir schicken können.",
     "warning_signs": [
       "Unbekannter Absender",

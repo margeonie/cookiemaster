@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wer ist wohl am anfälligsten für Phishing?</title>
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body data-page="overview">
+    <header class="topbar">
+      <h1>Wer ist wohl am anfälligsten für Phishing?</h1>
+    </header>
+
+    <main class="container app-shell">
+      <div class="status-row">
+        <div id="status" class="status-bar status-empty" aria-live="polite">
+          Datensammelpass wird geladen…
+        </div>
+      </div>
+
+      <div class="overview-controls">
+        <label class="persona-filter">
+          <span>Personas anzeigen</span>
+          <select id="persona-color-filter" aria-label="Personas nach Farbe filtern">
+            <option value="alle">Alle</option>
+            <option value="grün">Nur Grün</option>
+            <option value="orange">Nur Orange</option>
+          </select>
+        </label>
+        <div class="overview-buttons">
+          <button id="reset-freigaben" class="secondary-button" type="button">Reset</button>
+          <button id="reload-freigaben" class="secondary-button" type="button">Reload</button>
+        </div>
+      </div>
+
+      <div id="persona-list" class="persona-grid" aria-live="polite"></div>
+    </main>
+
+    <script src="../script.js"></script>
+  </body>
+</html>

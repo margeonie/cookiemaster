@@ -11,6 +11,8 @@
   --private-bg: #f3f4f6;
   --danger: #b91c1c;
   --success: #166534;
+  --persona-green: #B1D9B9;
+  --persona-orange: #FFE4C0;
 }
 
 * {
@@ -136,6 +138,12 @@ h1 {
   color: var(--success);
 }
 
+.status-bar.warning {
+  background: rgba(180, 83, 9, 0.08);
+  border-color: rgba(180, 83, 9, 0.2);
+  color: #92400e;
+}
+
 .status-bar.error {
   background: rgba(185, 28, 28, 0.08);
   border-color: rgba(185, 28, 28, 0.18);
@@ -155,6 +163,47 @@ h1 {
 
 .secondary-button[hidden] {
   display: none;
+}
+
+.overview-controls,
+.overview-buttons {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.overview-controls {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.persona-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 700;
+}
+
+.persona-filter select {
+  min-width: 10rem;
+  padding: 0.7rem 2rem 0.7rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+}
+
+@media (max-width: 520px) {
+  .overview-controls,
+  .persona-filter {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .overview-buttons {
+    justify-content: flex-end;
+  }
 }
 
 .persona-grid {
@@ -178,6 +227,18 @@ h1 {
   color: var(--text);
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
   overflow: visible;
+}
+
+.persona-card[hidden] {
+  display: none;
+}
+
+.persona-card-green {
+  background-color: var(--persona-green);
+}
+
+.persona-card-orange {
+  background-color: var(--persona-orange);
 }
 
 .persona-card:hover,
@@ -218,6 +279,24 @@ h1 {
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9), 0 0 0 8px rgba(239, 68, 68, 0.12);
 }
 
+.phishing-badge.badge-zero {
+  background: #6b7280;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
+  animation: none;
+}
+
+.phishing-badge.count-pop {
+  animation: countPop 260ms ease-out;
+}
+
+.persona-card.count-complete .phishing-badge {
+  animation: none;
+}
+
+.persona-card.count-complete {
+  border-color: rgba(22, 101, 52, 0.35);
+}
+
 @keyframes badgePulse {
   0%, 100% {
     transform: scale(1);
@@ -229,23 +308,55 @@ h1 {
   }
 }
 
+@keyframes countPop {
+  50% {
+    transform: scale(1.28);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .phishing-badge,
   .dashboard-mailbox-count {
     animation: none;
   }
+
+  .persona-card {
+    transition: none;
+  }
 }
 
-.persona-icon {
+.persona-avatar {
   display: inline-grid;
   place-items: center;
   width: 60px;
   height: 60px;
   border-radius: 50%;
+  overflow: hidden;
+  margin-bottom: 0.8rem;
+}
+
+.persona-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.persona-icon {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
   background: linear-gradient(135deg, var(--primary), var(--primary-dark));
   color: white;
   font-size: 1.75rem;
-  margin-bottom: 0.8rem;
+}
+
+.persona-image[hidden],
+.persona-icon[hidden],
+.detail-icon[hidden] {
+  display: none;
 }
 
 .persona-name {
@@ -260,6 +371,14 @@ h1 {
   border-radius: 20px;
   box-shadow: var(--shadow);
   padding: 1.5rem;
+}
+
+.detail-card.persona-card-green {
+  background-color: var(--persona-green);
+}
+
+.detail-card.persona-card-orange {
+  background-color: var(--persona-orange);
 }
 
 .detail-header-box {
@@ -279,9 +398,22 @@ h1 {
   font-size: 2rem;
 }
 
+.detail-image {
+  flex: 0 0 68px;
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+}
+
 .detail-name {
   margin: 0;
   font-size: clamp(1.9rem, 3vw, 2.6rem);
+}
+
+.detail-color {
+  color: var(--muted);
+  font-size: 0.6em;
+  font-weight: 600;
 }
 
 .persona-dashboard {

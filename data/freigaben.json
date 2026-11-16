@@ -1,0 +1,218 @@
+{
+  "merkmale": [
+    "Lieblingsvideospiel",
+    "Lieblingssport",
+    "Lieblingsmusiker:in",
+    "Schulname",
+    "Lieblingstier"
+  ],
+  "personas": {
+    "Grün": {
+      "Jules": {
+        "Lieblingsvideospiel": true,
+        "Lieblingssport": true,
+        "Lieblingsmusiker:in": false,
+        "Schulname": false,
+        "Lieblingstier": false
+      },
+      "Sam": {
+        "Lieblingsvideospiel": false,
+        "Lieblingssport": false,
+        "Lieblingsmusiker:in": true,
+        "Schulname": false,
+        "Lieblingstier": false
+      },
+      "Taylor": {
+        "Lieblingsvideospiel": false,
+        "Lieblingssport": true,
+        "Lieblingsmusiker:in": false,
+        "Schulname": false,
+        "Lieblingstier": false
+      },
+      "Bente": {
+        "Lieblingsvideospiel": false,
+        "Lieblingssport": false,
+        "Lieblingsmusiker:in": true,
+        "Schulname": false,
+        "Lieblingstier": false
+      },
+      "Elia": {
+        "Lieblingsvideospiel": false,
+        "Lieblingssport": false,
+        "Lieblingsmusiker:in": false,
+        "Schulname": true,
+        "Lieblingstier": false
+      },
+      "Domi": {
+        "Lieblingsvideospiel": false,
+        "Lieblingssport": false,
+        "Lieblingsmusiker:in": false,
+        "Schulname": false,
+        "Lieblingstier": true
+      },
+      "Robin": {
+        "Lieblingsvideospiel": false,
+        "Lieblingssport": false,
+        "Lieblingsmusiker:in": true,
+        "Schulname": true,
+        "Lieblingstier": false
+      },
+      "Sascha": {
+        "Lieblingsvideospiel": false,
+        "Lieblingssport": false,
+        "Lieblingsmusiker:in": true,
+        "Schulname": false,
+        "Lieblingstier": false
+      },
+      "Mika": {
+        "Lieblingsvideospiel": false,
+        "Lieblingssport": true,
+        "Lieblingsmusiker:in": true,
+        "Schulname": true,
+        "Lieblingstier": true
+      },
+      "Luca": {
+        "Lieblingsvideospiel": false,
+        "Lieblingssport": false,
+        "Lieblingsmusiker:in": false,
+        "Schulname": false,
+        "Lieblingstier": false
+      },
+      "Kai": {
+        "Lieblingsvideospiel": true,
+        "Lieblingssport": true,
+        "Lieblingsmusiker:in": true,
+        "Schulname": true,
+        "Lieblingstier": true
+      },
+      "Kim": {
+        "Lieblingsvideospiel": false,
+        "Lieblingssport": true,
+        "Lieblingsmusiker:in": true,
+        "Schulname": true,
+        "Lieblingstier": false
+      },
+      "Alex": {
+        "Lieblingsvideospiel": true,
+        "Lieblingssport": true,
+        "Lieblingsmusiker:in": true,
+        "Schulname": true,
+        "Lieblingstier": true
+      },
+      "Noah": {
+        "Lieblingsvideospiel": false,
+        "Lieblingssport": false,
+        "Lieblingsmusiker:in": false,
+        "Schulname": false,
+        "Lieblingstier": false
+      },
+      "Joni": {
+        "Lieblingsvideospiel": false,
+        "Lieblingssport": false,
+        "Lieblingsmusiker:in": true,
+        "Schulname": false,
+        "Lieblingstier": false
+      }
+    },
+    "Orange": {
+      "Jules": {
+        "Lieblingsvideospiel": true,
+        "Lieblingssport": false,
+        "Lieblingsmusiker:in": false,
+        "Schulname": false,
+        "Lieblingstier": false
+      },
+      "Sam": {
+        "Lieblingsvideospiel": true,
+        "Lieblingssport": true,
+        "Lieblingsmusiker:in": false,
+        "Schulname": false,
+        "Lieblingstier": false
+      },
+      "Taylor": {
+        "Lieblingsvideospiel": true,
+        "Lieblingssport": false,
+        "Lieblingsmusiker:in": false,
+        "Schulname": true,
+        "Lieblingstier": false
+      },
+      "Bente": {
+        "Lieblingsvideospiel": true,
+        "Lieblingssport": false,
+        "Lieblingsmusiker:in": true,
+        "Schulname": false,
+        "Lieblingstier": false
+      },
+      "Elia": {
+        "Lieblingsvideospiel": true,
+        "Lieblingssport": true,
+        "Lieblingsmusiker:in": true,
+        "Schulname": true,
+        "Lieblingstier": true
+      },
+      "Domi": {
+        "Lieblingsvideospiel": false,
+        "Lieblingssport": true,
+        "Lieblingsmusiker:in": false,
+        "Schulname": false,
+        "Lieblingstier": true
+      },
+      "Sascha": {
+        "Lieblingsvideospiel": false,
+        "Lieblingssport": true,
+        "Lieblingsmusiker:in": false,
+        "Schulname": false,
+        "Lieblingstier": false
+      },
+      "Mika": {
+        "Lieblingsvideospiel": false,
+        "Lieblingssport": true,
+        "Lieblingsmusiker:in": true,
+        "Schulname": true,
+        "Lieblingstier": true
+      },
+      "Luca": {
+        "Lieblingsvideospiel": false,
+        "Lieblingssport": false,
+        "Lieblingsmusiker:in": true,
+        "Schulname": false,
+        "Lieblingstier": false
+      },
+      "Kai": {
+        "Lieblingsvideospiel": false,
+        "Lieblingssport": false,
+        "Lieblingsmusiker:in": true,
+        "Schulname": false,
+        "Lieblingstier": false
+      },
+      "Kim": {
+        "Lieblingsvideospiel": false,
+        "Lieblingssport": false,
+        "Lieblingsmusiker:in": false,
+        "Schulname": false,
+        "Lieblingstier": false
+      },
+      "Alex": {
+        "Lieblingsvideospiel": true,
+        "Lieblingssport": true,
+        "Lieblingsmusiker:in": true,
+        "Schulname": true,
+        "Lieblingstier": true
+      },
+      "Noah": {
+        "Lieblingsvideospiel": false,
+        "Lieblingssport": false,
+        "Lieblingsmusiker:in": false,
+        "Schulname": true,
+        "Lieblingstier": false
+      }
+    }
+  },
+  "ausgeschlossen": {
+    "Grün": [],
+    "Orange": [
+      "Robin",
+      "Joni"
+    ]
+  }
+}

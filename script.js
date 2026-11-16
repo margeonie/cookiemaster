@@ -1,5 +1,72 @@
-const STORAGE_KEY = 'datensammelpass-visibility';
 const iconPool = ['🧑‍🎓', '🧑‍💻', '👩‍🏫', '🧑‍🚀', '👩‍🎤', '🧑‍⚕️', '🧑‍🌾', '🧑‍🏫', '👩‍💼', '🧑‍🎨'];
+const PERSONA_COUNT_INTERVAL_MS = 500;
+let freigabenData = null;
+let freigabenError = null;
+let personaCountTimer = null;
+let personaPositionAnimations = [];
+let personaAudioContext = null;
+
+function preparePersonaAudio() {
+  const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextConstructor) {
+    console.warn('Web Audio wird in diesem Browser nicht unterstützt.');
+    return;
+  }
+
+  if (!personaAudioContext) {
+    personaAudioContext = new AudioContextConstructor();
+  }
+
+  if (personaAudioContext.state === 'suspended') {
+    personaAudioContext.resume().catch((error) => {
+      console.warn('Nachrichtenton konnte nicht aktiviert werden.', error);
+    });
+  }
+}
+
+function playIncomingMessageSound() {
+  if (!personaAudioContext || personaAudioContext.state !== 'running') return;
+
+  const startTime = personaAudioContext.currentTime;
+  [740, 988].forEach((frequency, index) => {
+    const noteStart = startTime + index * 0.11;
+    const oscillator = personaAudioContext.createOscillator();
+    const volume = personaAudioContext.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(frequency, noteStart);
+    volume.gain.setValueAtTime(0.0001, noteStart);
+    volume.gain.exponentialRampToValueAtTime(0.1, noteStart + 0.015);
+    volume.gain.exponentialRampToValueAtTime(0.0001, noteStart + 0.13);
+    oscillator.connect(volume);
+    volume.connect(personaAudioContext.destination);
+    oscillator.start(noteStart);
+    oscillator.stop(noteStart + 0.14);
+  });
+}
+
+function cancelPersonaCountAnimation() {
+  if (personaCountTimer !== null) {
+    window.clearInterval(personaCountTimer);
+    personaCountTimer = null;
+  }
+  personaPositionAnimations.forEach((animation) => {
+    animation.finish();
+    animation.cancel();
+  });
+  personaPositionAnimations = [];
+}
+
+function shuffleArray(items) {
+  for (let index = items.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [items[index], items[randomIndex]] = [items[randomIndex], items[index]];
+  }
+  return items;
+}
+
+function normalizeUnicode(value) {
+  return String(value ?? '').trim().normalize('NFC');
+}
 
 function normalizeFeatureName(value) {
   const raw = String(value || '')
@@ -22,11 +89,7 @@ function normalizeFeatureName(value) {
 }
 
 function normalizePersonName(value) {
-  return String(value || '')
-    .trim()
-    .replace(/^\uFEFF/, '')
-    .replace(/\s+/g, ' ')
-    .toLowerCase();
+  return normalizeUnicode(value).replace(/^\uFEFF/, '').replace(/\s+/g, ' ').toLowerCase().normalize('NFC');
 }
 
 function detectDelimiter(text) {
@@ -66,6 +129,31 @@ function parseCsv(text) {
   return { headers, rows };
 }
 
+function getPersonaNameColumn(headers) {
+  return headers.find((header) => normalizePersonName(header) === 'name') || headers[0];
+}
+
+function getPersonaFeatures(headers) {
+  return headers.filter((header) => {
+    const normalized = normalizeFeatureName(header);
+    return !['farbe', 'name', 'bilddatei'].includes(normalized);
+  });
+}
+
+function getPersonaValue(row, headers, columnName) {
+  const normalizedColumn = normalizeFeatureName(columnName);
+  const header = headers.find((candidate) => normalizeFeatureName(candidate) === normalizedColumn);
+  return header ? String(row[header] || '').trim() : '';
+}
+
+function personaKey(farbe, name) {
+  return `${normalizePersonName(farbe)}-${normalizePersonName(name)}`;
+}
+
+function getPersonaImageUrl(imagePath) {
+  return imagePath ? `../data/${imagePath}` : '';
+}
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -75,40 +163,70 @@ function escapeHtml(value) {
     .replace(/'/g, '&#039;');
 }
 
-function getSharedFeatureCount(passData, personaName) {
-  const normalizedPersona = normalizePersonName(personaName);
-  const personaFlags = passData?.[normalizedPersona] || {};
-  return Object.values(personaFlags).filter(Boolean).length;
+function findNormalizedKey(object, value, normalize) {
+  const wanted = normalize(value);
+  return Object.keys(object || {}).find((key) => normalize(key) === wanted);
+}
+
+function getFreigaben(farbe, name) {
+  const colors = freigabenData?.personas;
+  const colorKey = findNormalizedKey(colors, farbe, normalizePersonName);
+  const personas = colorKey ? colors[colorKey] : null;
+  const nameKey = findNormalizedKey(personas, name, normalizePersonName);
+  if (!nameKey) {
+    throw new Error(`Für „${normalizeUnicode(name)}“ in „${normalizeUnicode(farbe)}“ fehlen Freigaben.`);
+  }
+  return personas[nameKey];
+}
+
+function isAusgeschlossen(farbe, name) {
+  const exclusions = freigabenData?.ausgeschlossen;
+  const colorKey = findNormalizedKey(exclusions, farbe, normalizePersonName);
+  const names = colorKey ? exclusions[colorKey] : [];
+  return Array.isArray(names) &&
+    names.some((excludedName) => normalizePersonName(excludedName) === normalizePersonName(name));
+}
+
+function hasValidFreigaben(farbe, name) {
+  const colors = freigabenData?.personas;
+  const colorKey = findNormalizedKey(colors, farbe, normalizePersonName);
+  const personas = colorKey ? colors[colorKey] : null;
+  const nameKey = findNormalizedKey(personas, name, normalizePersonName);
+  const freigaben = nameKey ? personas[nameKey] : null;
+  return freigaben && typeof freigaben === 'object' && !Array.isArray(freigaben) &&
+    (freigabenData.merkmale || []).every((feature) => {
+      const key = findNormalizedKey(freigaben, feature, normalizeUnicode);
+      return key && typeof freigaben[key] === 'boolean';
+    });
+}
+
+function getAktivePersonas(csvData) {
+  const headers = csvData.headers || [];
+  return (csvData.rows || []).filter((row) => {
+    const name = getPersonaValue(row, headers, 'Name');
+    const color = getPersonaValue(row, headers, 'Farbe');
+    return name && color && !isAusgeschlossen(color, name) && hasValidFreigaben(color, name);
+  });
+}
+
+function getFreigegebeneMerkmale(farbe, name) {
+  const freigaben = getFreigaben(farbe, name);
+  return (freigabenData.merkmale || []).filter((feature) => {
+    const featureKey = findNormalizedKey(freigaben, feature, normalizeUnicode);
+    return featureKey && freigaben[featureKey] === true;
+  });
 }
 
 async function readPhishingTemplates() {
-  const response = await fetch('phishing_vorlagen.json', { cache: 'no-store' });
+  const response = await fetch('../data/phishing_vorlagen.json', { cache: 'no-store' });
   if (!response.ok) {
     throw new Error('phishing_vorlagen.json konnte nicht geladen werden.');
   }
   return response.json();
 }
 
-function savePassData(data) {
-  const normalized = {};
-  Object.entries(data || {}).forEach(([key, value]) => {
-    normalized[normalizePersonName(key)] = value;
-  });
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
-}
-
-function loadPassData() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch (error) {
-    return {};
-  }
-}
-
 async function readCsvFile() {
-  const response = await fetch('personas.csv', { cache: 'no-store' });
+  const response = await fetch('../data/Personas.csv', { cache: 'no-store' });
   if (!response.ok) {
     throw new Error('Personas.csv konnte nicht geladen werden.');
   }
@@ -116,7 +234,7 @@ async function readCsvFile() {
 }
 
 async function readPassJsonFile() {
-  const response = await fetch('freigaben.json', { cache: 'no-store' });
+  const response = await fetch('../data/freigaben.json', { cache: 'no-store' });
   if (!response.ok) {
     throw new Error('freigaben.json konnte nicht geladen werden.');
   }
@@ -124,60 +242,121 @@ async function readPassJsonFile() {
 }
 
 function normalizePassData(rawPassData, csvData) {
-  const csvFeatures = (csvData.headers || []).slice(1).map((header) => String(header || '').trim()).filter(Boolean);
-  const csvFeatureSet = new Set(csvFeatures.map((feature) => normalizeFeatureName(feature)));
-  const csvPersonNames = (csvData.rows || [])
-    .map((row) => String(row[csvData.headers[0]] || '').trim())
-    .filter(Boolean);
-  const csvPersonSet = new Set(csvPersonNames.map((name) => normalizePersonName(name)));
-
-  if (!rawPassData || typeof rawPassData !== 'object') {
-    throw new Error('Datensammelpass ist ungültig.');
+  const headers = csvData.headers || [];
+  const nameColumn = getPersonaNameColumn(headers);
+  const colorColumn = headers.find((header) => normalizePersonName(header) === 'farbe');
+  if (!colorColumn) throw new Error('CSV-Spalte „Farbe“ fehlt.');
+  const csvFeatures = getPersonaFeatures(headers).map(normalizeUnicode).filter(Boolean);
+  if (!rawPassData || typeof rawPassData !== 'object' ||
+      !Array.isArray(rawPassData.merkmale) ||
+      !rawPassData.personas || typeof rawPassData.personas !== 'object') {
+    throw new Error('freigaben.json muss das farbgetrennte Format mit „merkmale“ und „personas“ enthalten.');
   }
 
-  const source = rawPassData.personas && typeof rawPassData.personas === 'object'
-    ? rawPassData.personas
-    : rawPassData;
+  const csvColors = new Map();
+  for (const row of csvData.rows || []) {
+    const color = normalizeUnicode(row[colorColumn]);
+    const name = normalizeUnicode(row[nameColumn]);
+    if (!color || !name) continue;
+    const colorKey = normalizePersonName(color);
+    if (!csvColors.has(colorKey)) csvColors.set(colorKey, { color, names: new Map() });
+    csvColors.get(colorKey).names.set(normalizePersonName(name), name);
+  }
 
-  const passPersonEntries = Object.entries(source || {});
-  const normalizedPersonas = {};
+  const jsonFeatures = rawPassData.merkmale.map(normalizeUnicode);
+  const csvFeatureSet = new Set(csvFeatures);
+  const jsonFeatureSet = new Set(jsonFeatures);
+  const missingFeatures = csvFeatures.filter((feature) => !jsonFeatureSet.has(feature));
+  const extraFeatures = jsonFeatures.filter((feature) => !csvFeatureSet.has(feature));
+  const missingPersons = [];
+  const extraPersons = [];
+  const invalidEntries = [];
+  const jsonColors = rawPassData.personas;
+  const exclusionsProvided = Object.prototype.hasOwnProperty.call(rawPassData, 'ausgeschlossen');
+  const exclusionSource = exclusionsProvided ? rawPassData.ausgeschlossen : {};
+  const exclusionsAreValid = exclusionSource && typeof exclusionSource === 'object' && !Array.isArray(exclusionSource);
+  const rawExclusions = exclusionsAreValid ? exclusionSource : {};
+  if (exclusionsProvided && !exclusionsAreValid) {
+    invalidEntries.push('„ausgeschlossen“ ist keine gültige Farbliste');
+  }
 
-  for (const [rawName, rawValue] of passPersonEntries) {
-    const canonicalName = normalizePersonName(rawName);
-    if (!canonicalName || !rawValue || typeof rawValue !== 'object') {
+  for (const [rawColor, rawPersonas] of Object.entries(jsonColors)) {
+    const normalizedColor = normalizePersonName(rawColor);
+    const csvColor = csvColors.get(normalizedColor);
+    if (!csvColor) {
+      extraPersons.push(`${rawColor}: (unbekannte Farbe)`);
       continue;
     }
-
-    const normalizedEntry = {};
-    for (const feature of csvFeatures) {
-      const canonicalFeature = normalizeFeatureName(feature);
-      const candidate = rawValue[feature] ?? rawValue[canonicalFeature] ?? rawValue[feature.toLowerCase()] ?? rawValue[feature.replace(/:/g, '')];
-      normalizedEntry[canonicalFeature] = Boolean(candidate);
+    if (!rawPersonas || typeof rawPersonas !== 'object' || Array.isArray(rawPersonas)) {
+      invalidEntries.push(`${rawColor}: ungültige Persona-Liste`);
+      continue;
     }
-    normalizedPersonas[canonicalName] = normalizedEntry;
+    for (const [rawName, flags] of Object.entries(rawPersonas)) {
+      const normalizedName = normalizePersonName(rawName);
+      if (!csvColor.names.has(normalizedName)) {
+        extraPersons.push(`${csvColor.color}: ${rawName}`);
+        continue;
+      }
+      if (!flags || typeof flags !== 'object' || Array.isArray(flags)) {
+        invalidEntries.push(`${csvColor.color}: ${rawName} hat ungültige Freigaben`);
+        continue;
+      }
+      for (const feature of csvFeatures) {
+        const key = findNormalizedKey(flags, feature, normalizeUnicode);
+        if (!key) {
+          invalidEntries.push(`${csvColor.color}: ${rawName} / ${feature} fehlt`);
+        } else if (typeof flags[key] !== 'boolean') {
+          invalidEntries.push(`${csvColor.color}: ${rawName} / ${feature} ist kein boolescher Wert`);
+        }
+      }
+    }
   }
 
-  const passFeatures = new Set(
-    Object.values(normalizedPersonas)
-      .flatMap((entry) => Object.keys(entry || {}))
-  );
+  for (const [rawColor, rawNames] of Object.entries(rawExclusions)) {
+    const csvColor = csvColors.get(normalizePersonName(rawColor));
+    if (!csvColor) {
+      extraPersons.push(`${rawColor}: (unbekannte Ausschlussfarbe)`);
+      continue;
+    }
+    if (!Array.isArray(rawNames)) {
+      invalidEntries.push(`${csvColor.color}: ungültige Ausschlussliste`);
+      continue;
+    }
+    for (const rawName of rawNames) {
+      if (typeof rawName !== 'string' || !csvColor.names.has(normalizePersonName(rawName))) {
+        extraPersons.push(`${csvColor.color}: ${String(rawName)} (unbekannter Ausschluss)`);
+      }
+    }
+  }
 
-  const missingFeatures = [...csvFeatureSet].filter((feature) => !passFeatures.has(feature));
-  const extraFeatures = [...passFeatures].filter((feature) => !csvFeatureSet.has(feature));
-  const missingPersons = [...csvPersonSet].filter((person) => !Object.prototype.hasOwnProperty.call(normalizedPersonas, person));
-  const extraPersons = [...Object.keys(normalizedPersonas)].filter((person) => !csvPersonSet.has(person));
+  for (const [colorKey, csvColor] of csvColors) {
+    const rawColorKey = findNormalizedKey(jsonColors, colorKey, normalizePersonName);
+    const rawPersonas = rawColorKey ? jsonColors[rawColorKey] : null;
+    const rawExclusionColor = findNormalizedKey(rawExclusions, colorKey, normalizePersonName);
+    const excludedNames = new Set(
+      rawExclusionColor && Array.isArray(rawExclusions[rawExclusionColor])
+        ? rawExclusions[rawExclusionColor].map(normalizePersonName)
+        : []
+    );
+    for (const [nameKey, name] of csvColor.names) {
+      if (!excludedNames.has(nameKey) && !findNormalizedKey(rawPersonas, name, normalizePersonName)) {
+        missingPersons.push(`${csvColor.color}: ${name}`);
+      }
+    }
+  }
 
   return {
-    normalizedPersonas,
+    data: rawPassData,
     missingFeatures,
     extraFeatures,
     missingPersons,
-    extraPersons
+    extraPersons,
+    invalidEntries
   };
 }
 
 function buildMismatchMessage(mismatch) {
-  const parts = ['Datensammelpass und CSV passen nicht zusammen.'];
+  const parts = ['Abweichungen zwischen Datensammelpass und CSV:'];
 
   if (mismatch.missingFeatures.length) {
     parts.push(`Fehlende Merkmale im Pass: ${mismatch.missingFeatures.join(', ')}`);
@@ -191,6 +370,9 @@ function buildMismatchMessage(mismatch) {
   if (mismatch.extraPersons.length) {
     parts.push(`Zusätzliche Personas im Pass: ${mismatch.extraPersons.join(', ')}`);
   }
+  if (mismatch.invalidEntries.length) {
+    parts.push(`Ungültige Freigaben: ${mismatch.invalidEntries.join(', ')}`);
+  }
 
   return parts.join(' ');
 }
@@ -201,20 +383,17 @@ async function loadFreshPassData() {
     const rawPassData = await readPassJsonFile();
     const normalized = normalizePassData(rawPassData, csvData);
 
-    if (
+    const hasMismatches = (
       normalized.missingFeatures.length ||
       normalized.extraFeatures.length ||
       normalized.missingPersons.length ||
-      normalized.extraPersons.length
-    ) {
-      return {
-        ok: false,
-        message: buildMismatchMessage(normalized),
-        mismatch: normalized
-      };
-    }
+      normalized.extraPersons.length ||
+      normalized.invalidEntries.length
+    );
+    const message = hasMismatches ? buildMismatchMessage(normalized) : '';
+    if (message) console.warn(message);
 
-    return { ok: true, data: normalized.normalizedPersonas };
+    return { ok: true, data: normalized.data, warning: message };
   } catch (error) {
     return {
       ok: false,
@@ -230,41 +409,222 @@ function updateUploadStatusBar(message, variant = 'empty') {
   status.className = `status-bar ${variant}`;
 }
 
-async function renderOverviewPage() {
+async function renderOverviewPage({ animateCounts = false } = {}) {
   const list = document.getElementById('persona-list');
   if (!list) return;
+  cancelPersonaCountAnimation();
+  const shouldAnimateCounts = animateCounts && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const colorFilter = document.getElementById('persona-color-filter');
+  const resetButton = document.getElementById('reset-freigaben');
+  const reloadButton = document.getElementById('reload-freigaben');
+
+  function applyColorFilter() {
+    const selectedColor = normalizePersonName(colorFilter?.value || 'alle');
+    list.querySelectorAll('.persona-card').forEach((card) => {
+      const matches = selectedColor === 'alle' ||
+        normalizePersonName(card.dataset.personaColor) === selectedColor;
+      card.hidden = !matches;
+    });
+  }
+
+  if (colorFilter) colorFilter.onchange = applyColorFilter;
+  if (resetButton) {
+    resetButton.onclick = async () => {
+      if (!freigabenData) return;
+      cancelPersonaCountAnimation();
+      freigabenData = JSON.parse(JSON.stringify(freigabenData));
+      for (const personas of Object.values(freigabenData.personas || {})) {
+        for (const flags of Object.values(personas || {})) {
+          for (const feature of freigabenData.merkmale || []) {
+            const featureKey = findNormalizedKey(flags, feature, normalizeUnicode);
+            if (featureKey) flags[featureKey] = false;
+          }
+        }
+      }
+      updateUploadStatusBar('Reset aktiv – alle Merkmale werden als nicht freigegeben angezeigt.', 'warning');
+      await renderOverviewPage();
+    };
+  }
+  if (reloadButton) {
+    reloadButton.onclick = async () => {
+      preparePersonaAudio();
+      reloadButton.disabled = true;
+      cancelPersonaCountAnimation();
+      list.querySelectorAll('.persona-card').forEach((card) => {
+        const badge = card.querySelector('.phishing-badge');
+        if (badge) {
+          badge.querySelector('.phishing-count').textContent = '0';
+          badge.setAttribute('aria-label', '0 Phishing-Nachrichten');
+          badge.title = '0 Phishing-Nachrichten';
+        }
+        card.dataset.currentCount = '0';
+        card.classList.add('count-complete');
+      });
+      updateUploadStatusBar('Freigaben werden neu geladen…');
+      try {
+        await loadPassStateForDisplay();
+        await renderOverviewPage({ animateCounts: true });
+      } finally {
+        reloadButton.disabled = false;
+      }
+    };
+  }
 
   try {
+    if (freigabenError || !freigabenData) {
+      list.innerHTML = `<p class="empty-state">${escapeHtml(freigabenError || 'Freigaben konnten nicht geladen werden.')}</p>`;
+      return;
+    }
     const csvData = await readCsvFile();
-    const passData = loadPassData();
-    const rows = csvData.rows || [];
-    list.innerHTML = rows
+    const headers = csvData.headers || [];
+    const previousOrder = new Map(
+      [...list.querySelectorAll('.persona-card')].map((card, index) => [card.dataset.personaKey, index])
+    );
+    let rows = getAktivePersonas(csvData)
       .map((row, index) => {
-        const name = row[csvData.headers[0]] || 'Unbekannt';
-        const count = getSharedFeatureCount(passData, name);
-        const badge = count > 0
-          ? `<span class="phishing-badge badge-${count > 2 ? 'high' : count > 0 ? 'medium' : ''}" aria-label="${count} Phishing-Nachricht${count === 1 ? '' : 'en'}" title="${count} Phishing-Nachricht${count === 1 ? '' : 'en'}">${count}</span>`
-          : '';
+        const name = getPersonaValue(row, headers, 'Name') || 'Unbekannt';
+        const color = getPersonaValue(row, headers, 'Farbe');
+        return {
+          row,
+          index,
+          key: personaKey(color, name),
+          count: getFreigegebeneMerkmale(color, name).length
+        };
+      });
+    if (shouldAnimateCounts) {
+      shuffleArray(rows);
+    } else {
+      rows.sort((a, b) => b.count - a.count ||
+        (previousOrder.get(a.key) ?? a.index) - (previousOrder.get(b.key) ?? b.index));
+    }
+    list.innerHTML = rows
+      .map(({ row, index, key, count }) => {
+        const name = getPersonaValue(row, headers, 'Name') || 'Unbekannt';
+        const color = getPersonaValue(row, headers, 'Farbe');
+        const imagePath = getPersonaValue(row, headers, 'Bilddatei');
+        const colorClass = normalizePersonName(color) === 'grün'
+          ? 'persona-card-green'
+          : normalizePersonName(color) === 'orange' ? 'persona-card-orange' : '';
+        const displayedCount = shouldAnimateCounts ? 0 : count;
+        const badgeClass = count === 0 ? 'zero' : count > 2 ? 'high' : 'medium';
+        const badge = `<span class="phishing-badge badge-${badgeClass}" aria-label="${displayedCount} Phishing-Nachricht${displayedCount === 1 ? '' : 'en'}" title="${displayedCount} Phishing-Nachricht${displayedCount === 1 ? '' : 'en'}"><span class="phishing-count">${displayedCount}</span></span>`;
+        const avatar = imagePath
+          ? `<img class="persona-image" src="${escapeHtml(getPersonaImageUrl(imagePath))}" alt="${escapeHtml(name)}" loading="lazy"><span class="persona-icon" aria-hidden="true" hidden>${iconPool[index % iconPool.length]}</span>`
+          : `<span class="persona-icon" aria-hidden="true">${iconPool[index % iconPool.length]}</span>`;
 
         return `
-          <button class="persona-card" type="button" data-name="${escapeHtml(name)}">
+          <button id="persona-${escapeHtml(key)}" class="persona-card ${colorClass}" type="button" data-persona-key="${escapeHtml(key)}" data-persona-name="${escapeHtml(name)}" data-persona-color="${escapeHtml(color)}" data-target-count="${count}" data-current-count="${displayedCount}" aria-label="${escapeHtml(`${name} (${color})`)}">
             ${badge}
-            <span class="persona-icon">${iconPool[index % iconPool.length]}</span>
+            <span class="persona-avatar">${avatar}</span>
             <span class="persona-name">${escapeHtml(name)}</span>
           </button>
         `;
       })
       .join('');
 
+    applyColorFilter();
+    attachImageFallbacks(list);
     list.querySelectorAll('.persona-card').forEach((button) => {
       button.addEventListener('click', () => {
-        const name = button.dataset.name;
-        window.location.href = `detail.html?name=${encodeURIComponent(name)}#so-koennten-betrueger-deine-daten-nutzen`;
+        const params = new URLSearchParams({
+          farbe: button.dataset.personaColor,
+          name: button.dataset.personaName
+        });
+        window.location.href = `detail.html?${params.toString()}#so-koennten-betrueger-deine-daten-nutzen`;
       });
     });
+
+    if (shouldAnimateCounts) {
+      startPersonaCountAnimation(list);
+    } else {
+      list.querySelectorAll('.persona-card').forEach((card) => card.classList.add('count-complete'));
+    }
   } catch (error) {
     list.innerHTML = '<p class="empty-state">Personas konnten nicht geladen werden.</p>';
   }
+}
+
+function startPersonaCountAnimation(list) {
+  const cards = [...list.querySelectorAll('.persona-card')];
+  cards.forEach((card) => {
+    if (Number(card.dataset.targetCount) === 0) card.classList.add('count-complete');
+  });
+
+  if (cards.every((card) => Number(card.dataset.targetCount) === 0)) return;
+
+  function sortAndAnimateCards(cardsBeforeSort) {
+    personaPositionAnimations.forEach((animation) => {
+      animation.finish();
+      animation.cancel();
+    });
+    personaPositionAnimations = [];
+
+    const previousPositions = new Map(
+      cardsBeforeSort.map((card) => [card, card.getBoundingClientRect()])
+    );
+    const currentOrder = new Map(cardsBeforeSort.map((card, index) => [card, index]));
+    const sortedCards = cardsBeforeSort.sort((a, b) =>
+      Number(b.dataset.currentCount) - Number(a.dataset.currentCount) ||
+      currentOrder.get(a) - currentOrder.get(b)
+    );
+    list.replaceChildren(...sortedCards);
+
+    sortedCards.forEach((card) => {
+      const before = previousPositions.get(card);
+      const after = card.getBoundingClientRect();
+      const deltaX = before.left - after.left;
+      const deltaY = before.top - after.top;
+      if (deltaX || deltaY) {
+        const animation = card.animate(
+          [{ transform: `translate(${deltaX}px, ${deltaY}px)` }, { transform: 'translate(0, 0)' }],
+          { duration: 500, easing: 'ease-in-out' }
+        );
+        personaPositionAnimations.push(animation);
+        animation.addEventListener('finish', () => {
+          personaPositionAnimations = personaPositionAnimations.filter((item) => item !== animation);
+        }, { once: true });
+      }
+    });
+  }
+
+  personaCountTimer = window.setInterval(() => {
+    const activeCards = [...list.querySelectorAll('.persona-card')];
+    activeCards.forEach((card) => {
+      const currentCount = Number(card.dataset.currentCount);
+      const targetCount = Number(card.dataset.targetCount);
+      if (currentCount >= targetCount) return;
+
+      const nextCount = currentCount + 1;
+      card.dataset.currentCount = String(nextCount);
+      const badge = card.querySelector('.phishing-badge');
+      badge.querySelector('.phishing-count').textContent = String(nextCount);
+      badge.setAttribute('aria-label', `${nextCount} Phishing-Nachricht${nextCount === 1 ? '' : 'en'}`);
+      badge.title = `${nextCount} Phishing-Nachricht${nextCount === 1 ? '' : 'en'}`;
+      badge.classList.remove('count-pop');
+
+      if (nextCount >= targetCount) {
+        card.classList.add('count-complete');
+      } else {
+        void badge.offsetWidth;
+        badge.classList.add('count-pop');
+      }
+    });
+
+    const hasBlinkingCards = activeCards.some(
+      (card) => Number(card.dataset.currentCount) < Number(card.dataset.targetCount)
+    );
+    if (hasBlinkingCards) playIncomingMessageSound();
+
+    sortAndAnimateCards(activeCards);
+
+    const allComplete = activeCards.every(
+      (card) => Number(card.dataset.currentCount) >= Number(card.dataset.targetCount)
+    );
+    if (allComplete) {
+      window.clearInterval(personaCountTimer);
+      personaCountTimer = null;
+    }
+  }, PERSONA_COUNT_INTERVAL_MS);
 }
 
 async function renderDetailPage() {
@@ -272,38 +632,58 @@ async function renderDetailPage() {
   if (!detailCard) return;
 
   const params = new URLSearchParams(window.location.search);
+  const selectedColor = params.get('farbe');
   const selectedName = params.get('name');
+  if (!selectedColor || !selectedName) {
+    detailCard.innerHTML = '<p class="empty-state">Zum Anzeigen bitte Farbe und Name in der URL angeben.</p>';
+    return;
+  }
 
   try {
     const csvData = await readCsvFile();
+    const headers = csvData.headers || [];
     const personaRow = (csvData.rows || []).find(
-      (row) => String(row[csvData.headers[0]] || '').trim() === selectedName
+      (row) => {
+        const rowName = getPersonaValue(row, headers, 'Name');
+        const rowColor = getPersonaValue(row, headers, 'Farbe');
+        return normalizePersonName(rowName) === normalizePersonName(selectedName) &&
+          normalizePersonName(rowColor) === normalizePersonName(selectedColor);
+      }
     );
 
     if (!personaRow) {
-      detailCard.innerHTML = '<p class="empty-state">Diese Persona wurde nicht gefunden.</p>';
+      detailCard.innerHTML = `<p class="empty-state">Keine Persona „${escapeHtml(selectedName)}“ mit der Farbe „${escapeHtml(selectedColor)}“ gefunden.</p>`;
       return;
     }
 
-    const passData = loadPassData();
-    const canonicalSelectedName = normalizePersonName(selectedName);
-    const featureEntries = (csvData.headers || []).slice(1).map((feature) => {
-      const canonicalFeature = normalizeFeatureName(feature);
-      const rawValue = String(personaRow[feature] || '').trim();
-      const isShared = Boolean(passData[canonicalSelectedName]?.[canonicalFeature]);
+    const personaName = getPersonaValue(personaRow, headers, 'Name');
+    const personaColor = getPersonaValue(personaRow, headers, 'Farbe');
+    const imagePath = getPersonaValue(personaRow, headers, 'Bilddatei');
+    if (isAusgeschlossen(personaColor, personaName)) {
+      detailCard.innerHTML = '<p class="empty-state">Diese Persona spielt in dieser Runde nicht mit.</p>';
+      return;
+    }
+    if (freigabenError) {
+      throw new Error(freigabenError);
+    }
+    const sharedFeatureNames = getFreigegebeneMerkmale(personaColor, personaName);
+    const featureEntries = sharedFeatureNames.map((feature) => {
+      const featureColumn = headers.find((header) => normalizeUnicode(header) === normalizeUnicode(feature));
+      if (!featureColumn) {
+        throw new Error(`Das Merkmal „${feature}“ fehlt in Personas.csv.`);
+      }
       return {
         feature,
-        displayValue: isShared ? rawValue : 'nicht öffentlich',
-        className: isShared ? '' : 'private',
-        sharedValue: isShared ? rawValue : null
+        sharedValue: String(personaRow[featureColumn] || '').trim()
       };
     });
 
-    const sharedFeatures = featureEntries.filter((entry) => entry.sharedValue !== null);
-    const privateCount = featureEntries.length - sharedFeatures.length;
+    const allFeatureCount = getPersonaFeatures(headers).length;
+    const privateCount = allFeatureCount - featureEntries.length;
 
     const phishingTemplates = await readPhishingTemplates();
-    const phishingMessages = sharedFeatures
+    const key = personaKey(personaColor, personaName);
+    const phishingMessages = featureEntries
       .map((entry, index) => {
         const template = phishingTemplates[entry.feature];
         if (!template) {
@@ -311,14 +691,14 @@ async function renderDetailPage() {
         }
 
         const text = template.text
-          .replace(/\{name\}/g, selectedName)
+          .replace(/\{name\}/g, personaName)
           .replace(/\{wert\}/g, entry.sharedValue);
         const sender = template.sender.includes('{wert}')
           ? template.sender.replace(/\{wert\}/g, entry.sharedValue)
           : template.sender;
 
         return {
-          id: `phishing-${index}`,
+          id: `${key}-phishing-${index}`,
           type: 'incoming',
           sender,
           text: `${text}\nhttps://gewinn-link.example`,
@@ -328,16 +708,24 @@ async function renderDetailPage() {
       })
       .filter(Boolean);
 
-    const icon = iconPool[Math.abs((selectedName || '').length) % iconPool.length];
+    const icon = iconPool[Math.abs(personaName.length) % iconPool.length];
+    const avatar = imagePath
+      ? `<img class="persona-image detail-image" src="${escapeHtml(getPersonaImageUrl(imagePath))}" alt="${escapeHtml(personaName)}"><span class="detail-icon" aria-hidden="true" hidden>${icon}</span>`
+      : `<span class="detail-icon" aria-hidden="true">${icon}</span>`;
 
+    detailCard.classList.remove('persona-card-green', 'persona-card-orange');
+    const colorClass = normalizePersonName(personaColor) === 'grün'
+      ? 'persona-card-green'
+      : normalizePersonName(personaColor) === 'orange' ? 'persona-card-orange' : '';
+    if (colorClass) detailCard.classList.add(colorClass);
     detailCard.innerHTML = `
       <div class="detail-header-box">
-        <span class="detail-icon">${icon}</span>
-        <h2 class="detail-name">${escapeHtml(selectedName)}</h2>
+        ${avatar}
+        <h2 class="detail-name">${escapeHtml(personaName)}</h2>
       </div>
       <section class="persona-dashboard" aria-label="Übersicht veröffentlichter Informationen">
         <div class="dashboard-stat dashboard-stat-shared">
-          <span class="dashboard-stat-value">${sharedFeatures.length}</span>
+          <span class="dashboard-stat-value">${featureEntries.length}</span>
           <span class="dashboard-stat-label">Veröffentlichte Informationen</span>
         </div>
         <div class="dashboard-stat dashboard-stat-private">
@@ -347,33 +735,34 @@ async function renderDetailPage() {
         <button
           class="dashboard-mailbox"
           type="button"
-          aria-label="Postfach mit ${sharedFeatures.length} ${sharedFeatures.length === 1 ? 'Nachricht' : 'Nachrichten'}"
+          aria-label="Postfach mit ${featureEntries.length} ${featureEntries.length === 1 ? 'Nachricht' : 'Nachrichten'}"
         >
           <svg viewBox="0 0 48 48" aria-hidden="true">
             <path d="M6 9h36v30H6z" />
             <path d="M6 25h10l4 7h8l4-7h10" />
           </svg>
-          <span class="dashboard-mailbox-count">${sharedFeatures.length}</span>
-          <span class="dashboard-stat-label">${sharedFeatures.length === 1 ? 'Nachricht' : 'Nachrichten'}</span>
+          <span class="dashboard-mailbox-count">${featureEntries.length}</span>
+          <span class="dashboard-stat-label">${featureEntries.length === 1 ? 'Nachricht' : 'Nachrichten'}</span>
         </button>
       </section>
       <details class="feature-disclosure">
         <summary>Merkmale anzeigen</summary>
         <ul class="detail-list">
-          ${featureEntries
+          ${featureEntries.length ? featureEntries
             .map(
-              ({ feature, displayValue, className }) => `
-                <li class="detail-item ${className}">
+              ({ feature, sharedValue }) => `
+                <li class="detail-item">
                   <span class="detail-label">${escapeHtml(feature)}</span>
-                  <span class="detail-value">${escapeHtml(displayValue)}</span>
+                  <span class="detail-value">${escapeHtml(sharedValue)}</span>
                 </li>
               `
             )
-            .join('')}
+            .join('') : '<li class="empty-state">Für diese Persona sind keine Merkmale freigegeben.</li>'}
         </ul>
       </details>
     `;
 
+    attachImageFallbacks(detailCard);
     const mailboxButton = detailCard.querySelector('.dashboard-mailbox');
     const chatOverlay = document.getElementById('persona-chat-overlay');
     const chatContainer = document.getElementById('persona-chat');
@@ -438,8 +827,21 @@ async function renderDetailPage() {
     });
 
   } catch (error) {
-    detailCard.innerHTML = '<p class="empty-state">Details konnten nicht geladen werden.</p>';
+    detailCard.innerHTML = `<p class="empty-state">Details konnten nicht geladen werden: ${escapeHtml(error.message || 'Unbekannter Fehler')}</p>`;
   }
+}
+
+function attachImageFallbacks(container) {
+  container.querySelectorAll('.persona-image').forEach((image) => {
+    image.addEventListener('error', () => {
+      image.hidden = true;
+      image.nextElementSibling.hidden = false;
+    }, { once: true });
+
+    if (image.complete && image.naturalWidth === 0) {
+      image.dispatchEvent(new Event('error'));
+    }
+  });
 }
 
 async function loadPassStateForDisplay() {
@@ -448,18 +850,27 @@ async function loadPassStateForDisplay() {
     return;
   }
 
+  freigabenData = null;
+  freigabenError = null;
   try {
     const result = await loadFreshPassData();
     if (!result.ok) {
+      freigabenError = result.message;
       status.textContent = result.message;
       status.className = 'status-bar error';
       return;
     }
 
-    savePassData(result.data);
-    status.textContent = 'Datensammelpass geladen';
-    status.className = 'status-bar active';
+    freigabenData = result.data;
+    if (result.warning) {
+      status.textContent = 'Datensammelpass geladen – einige Einträge sind ungültig oder fehlen.';
+      status.className = 'status-bar warning';
+    } else {
+      status.textContent = 'Datensammelpass geladen';
+      status.className = 'status-bar active';
+    }
   } catch (error) {
+    freigabenError = error && error.message ? error.message : 'Datensammelpass konnte nicht geladen werden.';
     status.textContent = 'Kein Datensammelpass gefunden';
     status.className = 'status-bar status-empty';
   }

@@ -1,0 +1,12 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Kontrollbilder von generate_freigaben.py --debug
+data/debug_*.jpg
+
+# Betriebssystem / Editor
+.DS_Store
+Thumbs.db
+.vscode/
