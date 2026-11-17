@@ -9,8 +9,8 @@ Sagt ein Kind ja, kreuzt die Lehrperson das im **Datensammelpass** der passenden
 
 Am Ende des Tages fotografiert die Lehrperson die beiden Pässe, und die App wertet sie automatisch aus.
 Sie zeigt dann, wie viele Phishing-Nachrichten jede Persona aufgrund der geteilten Informationen bekommen
-könnte. Die Nachrichten erscheinen in einem simulierten Messenger, und die Warnzeichen lassen sich
-gemeinsam besprechen.
+könnte. Die Nachrichten landen im Postfach eines simulierten Messengers – mit Chatübersicht und einem
+Chat pro Absender –, und die Warnzeichen lassen sich gemeinsam besprechen.
 
 Alle Personas, ihre Merkmale und Bilder sind frei erfunden. Die Bilder sind Illustrationen, keine Fotos
 echter Kinder. Die Beispielbilder der Datensammelpässe in `assets/images/` enthalten ebenfalls nur diese
@@ -30,20 +30,27 @@ Die Auswertung der Fotos läuft komplett im Browser. Die Bilder werden nirgendwo
    möchten. Bei „Ja“ kreuzt die Lehrperson das Merkmal im Pass der passenden Farbe an.
 3. **Am Ende des Tages:** Beide Pässe möglichst gerade und von oben fotografieren. Das ganze Blatt sollte
    zu sehen sein, am besten auf einem dunkleren Untergrund.
-4. In der App beim **grünen** und beim **orangen Datensammelpass** jeweils das Foto auswählen und auf
-   **Laden** klicken. Beim ersten Mal wird die Bilderkennung geladen (ca. 10 MB), danach dauert die
-   Auswertung einige Sekunden.
-5. **Auflösung:** Die Phishing-Zähler laufen hoch, und die Personas sortieren sich danach, wie viel sie
-   geteilt haben.
-6. Eine Persona anklicken und das Postfach öffnen, um die Nachrichten und Warnzeichen zu besprechen.
+4. In der Übersicht auf **Datensammelpässe hochladen** klicken. Auf der Upload-Seite beim **grünen** und
+   beim **orangen Datensammelpass** jeweils das Foto auswählen und auf **Laden** klicken. Beim ersten Mal
+   wird die Bilderkennung geladen (ca. 10 MB), danach dauert die Auswertung einige Sekunden.
+5. **Auflösung:** Zurück zur Übersicht. Die Phishing-Zähler laufen einmal hoch, und die Personas sortieren
+   sich danach, wie viel sie geteilt haben. Tipp: Die Übersicht kann auch in einem zweiten Tab offen sein
+   (z. B. am Beamer) – sie aktualisiert sich nach dem Upload automatisch. Der Nachrichtenton erklingt erst,
+   nachdem einmal in die Übersicht geklickt wurde.
+6. Eine Persona anklicken und das **Postfach** öffnen. Es erscheint eine Chatübersicht mit einem Chat pro
+   Absender. Ein Klick auf einen Chat zeigt die Phishing-Nachricht, ein Klick auf den Link darin die
+   Warnzeichen.
 
-Unter **Erkannte Kreuze prüfen** zeigt die App, was sie auf den Fotos erkannt hat. Unsichere Kreuze sind
-mit **?** markiert und zählen als *nicht freigegeben*. Ist etwas falsch erkannt, hilft meist ein neues,
-geraderes Foto.
+Auf der Upload-Seite zeigt **Erkannte Kreuze prüfen**, was die App auf den Fotos erkannt hat. Unsichere
+Kreuze sind mit **?** markiert und zählen als *nicht freigegeben*. Ist etwas falsch erkannt, hilft meist
+ein neues, geraderes Foto.
 
-Das Ergebnis bleibt im Browser gespeichert, bis neue Pässe geladen werden. Solange noch keine Pässe
-geladen wurden, zeigt die App Beispieldaten. **Laden** ohne ausgewählte Fotos spielt die Auflösung noch
-einmal ab. **Reset** setzt die Anzeige auf „nichts freigegeben“.
+Solange keine Pässe hochgeladen wurden, sind bei allen Personas **keine Merkmale freigegeben** – alle
+Zähler stehen auf 0. Das Ergebnis eines Uploads bleibt im Browser gespeichert, bis neue Pässe geladen
+werden. **Reset** in der Übersicht löscht die gespeicherten Pässe wieder, z. B. für die nächste Klasse.
+
+Im Postfach gelten geöffnete Chats als gelesen. Das merkt sich der Browser nur, bis das Fenster
+geschlossen wird.
 
 ## Lokal starten (optional)
 
@@ -82,8 +89,8 @@ Zeilen und Spalten ergibt sich aus `Personas.csv`.
 Die Bilderkennung gibt es zweimal mit identischer Logik:
 
 - `pass-scanner.js` – läuft im Browser (OpenCV.js, liegt in `vendor/`) und wird von der App verwendet.
-- `generate_freigaben.py` – dieselbe Erkennung in Python. Damit werden die Beispieldaten in
-  `data/freigaben.json` erzeugt, und mit `--debug` lässt sich die Erkennung untersuchen.
+- `generate_freigaben.py` – dieselbe Erkennung in Python, nur zur Fehlersuche. Mit `--debug` lässt sich
+  die Erkennung untersuchen. Die App selbst braucht das Skript nicht.
 
 Wer Schwellenwerte oder den Ablauf ändert, muss das in **beiden** Dateien tun.
 
@@ -93,27 +100,34 @@ python -m venv .venv
 # macOS/Linux:  source .venv/bin/activate
 pip install -r requirements.txt
 
-python generate_freigaben.py           # Fotos aus assets/images/ -> data/freigaben.json
+python generate_freigaben.py           # Fotos aus assets/images/ auswerten
 python generate_freigaben.py --debug   # zusätzlich data/debug_grün.jpg und data/debug_orange.jpg
 ```
 
-Die Debug-Bilder zeigen das erkannte Raster und den Tintenanteil pro Zelle.
+Das Skript gibt die erkannte Matrix in der Konsole aus und schreibt sie nach `data/freigaben.json`. Die
+Debug-Bilder zeigen das erkannte Raster und den Tintenanteil pro Zelle. Beide Ausgaben werden von Git
+ignoriert.
+
+Hochgeladene Pässe speichert die App im `localStorage` unter `cookiemaster.freigaben`. Die Gelesen-Markierung
+der Chats liegt im `sessionStorage` unter `cookiemaster.readChats.<persona>`.
 
 ### Projektstruktur
 
 ```
 index.html                    Weiterleitung auf html/index.html (für GitHub Pages)
-html/index.html               Übersicht mit Upload der Datensammelpässe
-html/detail.html              Detailseite einer Persona mit Phishing-Chat
-script.js                     App-Logik (Daten laden, prüfen, anzeigen)
+html/index.html               Übersicht der Personas (Phishing-Zähler, Filter, Reset)
+html/upload.html              Upload und Auswertung der Datensammelpässe
+html/detail.html              Detailseite einer Persona mit Postfach
+script.js                     App-Logik (Daten laden, prüfen, anzeigen, Postfach-Navigation)
 pass-scanner.js               Bilderkennung im Browser
 vendor/opencv.js              OpenCV für den Browser (Apache 2.0)
-chat.js, chat.css             Messenger-Komponente
+chat.js, chat.css             Messenger-Komponente (Chatübersicht und Chat)
 styles.css                    Allgemeines Layout
-generate_freigaben.py         Bilderkennung in Python (Beispieldaten, Fehlersuche)
+start.bat                     Lokaler Start unter Windows
+generate_freigaben.py         Bilderkennung in Python (nur Fehlersuche)
+requirements.txt              Python-Pakete für generate_freigaben.py
 data/Personas.csv             Personas und ihre Merkmale
-data/freigaben.json           Beispieldaten
 data/phishing_vorlagen.json   Phishing-Nachricht je Merkmal
 data/Persona_Bilder/          Bilder der Personas
-assets/images/                Beispielfotos der Datensammelpässe
+assets/images/                Beispielfotos der Datensammelpässe (zum Ausprobieren des Uploads)
 ```

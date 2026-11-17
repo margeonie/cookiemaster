@@ -501,7 +501,7 @@
     }
   }
 
-  // Wertet mehrere Pässe aus und baut daraus das Format von freigaben.json.
+  // Wertet mehrere Pässe aus und baut daraus das Freigaben-Format (merkmale/personas/ausgeschlossen).
   // passes: [{ color: 'Grün', file, personNames }]
   async function scanPasses(passes, featureNames) {
     const data = { merkmale: featureNames, personas: {}, ausgeschlossen: {} };

@@ -364,7 +364,7 @@ function normalizePassData(rawPassData, csvData) {
   if (!rawPassData || typeof rawPassData !== 'object' ||
       !Array.isArray(rawPassData.merkmale) ||
       !rawPassData.personas || typeof rawPassData.personas !== 'object') {
-    throw new Error('freigaben.json muss das farbgetrennte Format mit „merkmale“ und „personas“ enthalten.');
+    throw new Error('Die Freigaben müssen das farbgetrennte Format mit „merkmale“ und „personas“ enthalten.');
   }
 
   const csvColors = new Map();

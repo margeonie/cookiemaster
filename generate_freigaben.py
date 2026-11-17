@@ -31,8 +31,8 @@ sie fehlt unter "personas" und steht stattdessen unter "ausgeschlossen".
 
 Die Web-App wertet die Pässe mit pass-scanner.js direkt im Browser aus – das
 ist eine 1:1-Übertragung dieses Skripts. Schwellenwerte und Ablauf müssen in
-beiden Dateien gleich bleiben. Dieses Skript ist vor allem zur Fehlersuche
-(--debug) und zum Erzeugen der Beispieldaten in data/freigaben.json da.
+beiden Dateien gleich bleiben. Dieses Skript dient nur der Fehlersuche
+(--debug); die App liest data/freigaben.json nicht.
 """
 
 from __future__ import annotations

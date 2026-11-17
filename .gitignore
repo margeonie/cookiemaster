@@ -3,8 +3,9 @@
 __pycache__/
 *.pyc
 
-# Kontrollbilder von generate_freigaben.py --debug
+# Ausgaben von generate_freigaben.py (nur zur Fehlersuche)
 data/debug_*.jpg
+data/freigaben.json
 
 # Betriebssystem / Editor
 .DS_Store
