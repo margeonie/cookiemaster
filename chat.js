@@ -8,8 +8,87 @@
     sticker: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7"/><path d="M20 13h-5a2 2 0 0 0-2 2v5M20 13l-7 7"/></svg>',
     camera: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9l-5 4V9a4 4 0 0 0-2-4Z"/></svg>',
     mic: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4m-4 0h8"/></svg>',
-    send: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>'
+    send: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>',
+    more: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
+    search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+    archive: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4"/></svg>',
+    updates: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="4 2.5"/><circle cx="12" cy="12" r="4.5"/></svg>',
+    communities: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8.5" r="3.2"/><circle cx="17" cy="9.5" r="2.5"/><path d="M3 19c0-3.3 2.7-5.2 6-5.2s6 1.9 6 5.2M15.5 14.2c3 0 5.5 1.6 5.5 4.8"/></svg>',
+    chats: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 1 3.4 6.5L3 20l1.4-4A8 8 0 0 1 4 12Z"/></svg>',
+    you: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="10" r="3"/><path d="M6.5 18.5c1.2-2.2 3.2-3.3 5.5-3.3s4.3 1.1 5.5 3.3"/></svg>'
   };
+
+  const statusBarHtml = `
+    <div class="chat-statusbar" aria-label="Gerätestatus">
+      <strong class="chat-device-time"></strong>
+      <div class="chat-status-icons">
+        <svg class="chat-signal" viewBox="0 0 20 16" aria-hidden="true"><path d="M1 15h3V11H1zm5 0h3V8H6zm5 0h3V5h-3zm5 0h3V1h-3z"/></svg>
+        <span class="chat-network"></span>
+        <svg class="chat-battery" viewBox="0 0 40 20" role="img"><rect x="1" y="2" width="33" height="16" rx="4"/><path d="M36 7v6"/><text x="17" y="13" text-anchor="middle"></text></svg>
+      </div>
+    </div>
+  `;
+
+  const avatarColors = ["#1f9d6a", "#2f7fc4", "#c97a32", "#8a5cc2", "#c4506d", "#2e9aa6", "#6f8a2a"];
+
+  // Füllt die Statusleiste und startet die Uhr; gibt eine Stop-Funktion zurück.
+  function fillStatusBar(container, statusBar) {
+    container.querySelector(".chat-network").textContent = statusBar?.network || "";
+    container.querySelector(".chat-battery text").textContent =
+      `${Number.isFinite(statusBar?.battery) ? statusBar.battery : ""}%`;
+
+    const deviceTime = container.querySelector(".chat-device-time");
+    let clockTimer;
+    function updateDeviceTime() {
+      const now = new Date();
+      deviceTime.textContent = new Intl.DateTimeFormat("de-DE", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      }).format(now);
+      clockTimer = window.setTimeout(
+        updateDeviceTime,
+        Math.max(1000, 60000 - now.getSeconds() * 1000 - now.getMilliseconds())
+      );
+    }
+    updateDeviceTime();
+    return () => window.clearTimeout(clockTimer);
+  }
+
+  function getInitials(name) {
+    const words = String(name || "").trim().split(/[\s_-]+/).filter(Boolean);
+    const initials = words.slice(0, 2).map((word) => word.slice(0, 1)).join("");
+    return initials.toLocaleUpperCase("de") || "?";
+  }
+
+  function getAvatarColor(name) {
+    let hash = 0;
+    for (const char of String(name || "")) {
+      hash = (hash * 31 + char.codePointAt(0)) % 100000;
+    }
+    return avatarColors[hash % avatarColors.length];
+  }
+
+  // Bild, falls vorhanden – sonst Initialen auf farbigem Kreis
+  function fillAvatar(element, name, imageUrl) {
+    function showInitials() {
+      element.textContent = getInitials(name);
+      element.style.background = getAvatarColor(name);
+      element.style.color = "#fff";
+    }
+    if (imageUrl) {
+      const image = document.createElement("img");
+      image.src = imageUrl;
+      image.alt = "";
+      image.addEventListener("error", () => {
+        image.remove();
+        showInitials();
+      }, { once: true });
+      element.append(image);
+    } else {
+      showInitials();
+    }
+  }
 
   function createGameChat(container, options) {
     if (!container) {
@@ -23,18 +102,10 @@
     let messageCounter = 0;
     let typingTimer;
     let resolveTyping;
-    let clockTimer;
 
     container.className = "game-chat";
     container.innerHTML = `
-      <div class="chat-statusbar" aria-label="Gerätestatus">
-        <strong class="chat-device-time"></strong>
-        <div class="chat-status-icons">
-          <svg class="chat-signal" viewBox="0 0 20 16" aria-hidden="true"><path d="M1 15h3V11H1zm5 0h3V8H6zm5 0h3V5h-3zm5 0h3V1h-3z"/></svg>
-          <span class="chat-network"></span>
-          <svg class="chat-battery" viewBox="0 0 40 20" role="img"><rect x="1" y="2" width="33" height="16" rx="4"/><path d="M36 7v6"/><text x="17" y="13" text-anchor="middle"></text></svg>
-        </div>
-      </div>
+      ${statusBarHtml}
       <header class="chat-header">
         <button class="chat-back chat-pill" type="button" aria-label="Zurück">
           ${icon.back}<span class="chat-unread"></span>
@@ -68,43 +139,10 @@
     const sendButton = container.querySelector(".chat-send");
     const replyContainer = container.querySelector(".chat-replies");
 
-    const deviceTime = container.querySelector(".chat-device-time");
-    function updateDeviceTime() {
-      const now = new Date();
-      deviceTime.textContent = new Intl.DateTimeFormat("de-DE", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false
-      }).format(now);
-      clockTimer = window.setTimeout(
-        updateDeviceTime,
-        Math.max(1000, 60000 - now.getSeconds() * 1000 - now.getMilliseconds())
-      );
-    }
-    updateDeviceTime();
-    container.querySelector(".chat-network").textContent = data.statusBar?.network || "";
-    container.querySelector(".chat-battery text").textContent =
-      `${Number.isFinite(data.statusBar?.battery) ? data.statusBar.battery : ""}%`;
+    const stopClock = fillStatusBar(container, data.statusBar);
     container.querySelector(".chat-unread").textContent = String(data.contact?.unreadCount ?? 0);
     container.querySelector(".chat-contact-name").textContent = data.contact?.name || "";
-
-    const avatar = container.querySelector(".chat-avatar");
-    if (data.contact?.avatar) {
-      const image = document.createElement("img");
-      image.src = data.contact.avatar;
-      image.alt = "";
-      image.addEventListener("error", () => {
-        image.remove();
-        avatar.textContent = getInitials(data.contact?.name);
-      }, { once: true });
-      avatar.append(image);
-    } else {
-      avatar.textContent = getInitials(data.contact?.name);
-    }
-
-    function getInitials(name) {
-      return String(name || "").trim().slice(0, 1).toLocaleUpperCase("de") || "?";
-    }
+    fillAvatar(container.querySelector(".chat-avatar"), data.contact?.name, data.contact?.avatar);
 
     function addMessage(message, animate) {
       if (!message || typeof message.type !== "string") {
@@ -297,12 +335,167 @@
       scrollToLatest,
       getMessages: () => [...messages],
       destroy() {
-        window.clearTimeout(clockTimer);
+        stopClock();
         window.clearTimeout(typingTimer);
         if (resolveTyping) resolveTyping();
       }
     };
   }
 
+  // Chatübersicht: chats = [{ id, name, avatar, timestamp, time, preview, unreadCount }]
+  function createChatList(container, options) {
+    if (!container) {
+      throw new Error("createChatList benötigt ein Element.");
+    }
+
+    const config = options || {};
+    const chats = [...(config.chats || [])].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    const unreadChatCount = chats.filter((chat) => chat.unreadCount > 0).length;
+    let filter = "all";
+
+    container.className = "game-chat-list";
+    container.innerHTML = `
+      ${statusBarHtml}
+      <header class="chat-list-header">
+        <div class="chat-list-toolbar">
+          <button type="button" class="chat-list-round chat-list-more">${icon.more}</button>
+          <div class="chat-list-toolbar-actions">
+            <button type="button" class="chat-icon-button chat-list-camera" aria-label="Kamera">${icon.camera}</button>
+            <button type="button" class="chat-list-round chat-list-new" aria-label="Neuer Chat">${icon.plus}</button>
+          </div>
+        </div>
+        <h2 class="chat-list-title">Chats</h2>
+      </header>
+      <div class="chat-list-scroll">
+        <label class="chat-list-search">
+          ${icon.search}
+          <span class="visually-hidden">Chats durchsuchen</span>
+          <input class="chat-list-search-input" type="search" placeholder="Suchen" autocomplete="off" />
+        </label>
+        <div class="chat-list-chips" role="group" aria-label="Chats filtern">
+          <button type="button" class="chat-list-chip is-active" data-filter="all" aria-pressed="true">Alle</button>
+          <button type="button" class="chat-list-chip" data-filter="unread" aria-pressed="false">Ungelesen<span class="chat-list-chip-count"></span></button>
+          <button type="button" class="chat-list-chip" aria-pressed="false">Favoriten</button>
+          <button type="button" class="chat-list-chip" aria-pressed="false">Gruppen</button>
+        </div>
+        <div class="chat-list-archived">
+          <span class="chat-list-archived-icon">${icon.archive}</span>
+          <span class="chat-list-archived-label">Archiviert</span>
+          <span class="chat-list-archived-count"></span>
+        </div>
+        <ul class="chat-list-items"></ul>
+        <p class="chat-list-empty" hidden></p>
+      </div>
+      <nav class="chat-list-tabbar" aria-label="Bereiche">
+        <button type="button" class="chat-list-tab"><span class="chat-list-tab-icon">${icon.updates}</span><span>Aktuelles</span></button>
+        <button type="button" class="chat-list-tab"><span class="chat-list-tab-icon">${icon.phone}</span><span>Anrufe</span></button>
+        <button type="button" class="chat-list-tab"><span class="chat-list-tab-icon">${icon.communities}</span><span>Communitys</span></button>
+        <button type="button" class="chat-list-tab chat-list-tab-chats is-active" aria-current="page"><span class="chat-list-tab-icon">${icon.chats}<span class="chat-list-tab-badge"></span></span><span>Chats</span></button>
+        <button type="button" class="chat-list-tab"><span class="chat-list-tab-icon">${icon.you}</span><span>Du</span></button>
+      </nav>
+    `;
+
+    const stopClock = fillStatusBar(container, config.statusBar);
+    const scrollArea = container.querySelector(".chat-list-scroll");
+    const searchInput = container.querySelector(".chat-list-search-input");
+    const list = container.querySelector(".chat-list-items");
+    const empty = container.querySelector(".chat-list-empty");
+    const filterChips = [...container.querySelectorAll(".chat-list-chip[data-filter]")];
+
+    container.querySelector(".chat-list-more").setAttribute("aria-label", config.closeLabel || "Schließen");
+    container.querySelector(".chat-list-chip-count").textContent = unreadChatCount ? ` ${unreadChatCount}` : "";
+    container.querySelector(".chat-list-tab-badge").textContent = unreadChatCount ? String(unreadChatCount) : "";
+    container.querySelector(".chat-list-archived-count").textContent = String(config.archivedCount ?? 2);
+
+    function createItem(chat) {
+      const unread = chat.unreadCount > 0;
+      const item = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `chat-list-item${unread ? " is-unread" : ""}`;
+      button.addEventListener("click", () => config.onOpen?.(chat.id));
+
+      const avatar = document.createElement("span");
+      avatar.className = "chat-list-avatar";
+      avatar.setAttribute("aria-hidden", "true");
+      fillAvatar(avatar, chat.name, chat.avatar);
+
+      const body = document.createElement("span");
+      body.className = "chat-list-body";
+      const top = document.createElement("span");
+      top.className = "chat-list-top";
+      const name = document.createElement("strong");
+      name.className = "chat-list-name";
+      name.textContent = chat.name || "";
+      const time = document.createElement("time");
+      time.className = "chat-list-time";
+      time.textContent = chat.time || "";
+      top.append(name, time);
+
+      const bottom = document.createElement("span");
+      bottom.className = "chat-list-bottom";
+      const preview = document.createElement("span");
+      preview.className = "chat-list-preview";
+      preview.textContent = String(chat.preview || "").replace(/\s+/g, " ").trim();
+      bottom.append(preview);
+      if (unread) {
+        const badge = document.createElement("span");
+        badge.className = "chat-list-badge";
+        badge.textContent = String(chat.unreadCount);
+        badge.setAttribute("aria-label", `${chat.unreadCount} ungelesen`);
+        bottom.append(badge);
+      }
+
+      body.append(top, bottom);
+      button.append(avatar, body);
+      item.append(button);
+      return item;
+    }
+
+    function render() {
+      const query = searchInput.value.trim().toLocaleLowerCase("de");
+      const visible = chats.filter((chat) =>
+        (filter !== "unread" || chat.unreadCount > 0) &&
+        (!query || `${chat.name || ""} ${chat.preview || ""}`.toLocaleLowerCase("de").includes(query))
+      );
+      list.replaceChildren(...visible.map(createItem));
+      empty.hidden = visible.length > 0;
+      empty.textContent = chats.length
+        ? (filter === "unread" && !query ? "Keine ungelesenen Chats." : "Keine passenden Chats gefunden.")
+        : (config.emptyText || "Noch keine Chats.");
+    }
+
+    function setFilter(value) {
+      filter = value;
+      filterChips.forEach((chip) => {
+        const active = chip.dataset.filter === value;
+        chip.classList.toggle("is-active", active);
+        chip.setAttribute("aria-pressed", String(active));
+      });
+      render();
+    }
+
+    searchInput.addEventListener("input", render);
+    filterChips.forEach((chip) => chip.addEventListener("click", () => setFilter(chip.dataset.filter)));
+    container.querySelector(".chat-list-more").addEventListener("click", () => config.onClose?.());
+    container.querySelector(".chat-list-camera").addEventListener("click", () => config.onCameraClick?.());
+    container.querySelector(".chat-list-new").addEventListener("click", () => config.onNewChatClick?.());
+    container.querySelector(".chat-list-tab-chats").addEventListener("click", () => {
+      searchInput.value = "";
+      setFilter("all");
+      scrollArea.scrollTop = 0;
+    });
+
+    render();
+
+    return {
+      setFilter,
+      destroy() {
+        stopClock();
+      }
+    };
+  }
+
   window.createGameChat = createGameChat;
+  window.createChatList = createChatList;
 })();

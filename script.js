@@ -808,6 +808,7 @@ async function renderDetailPage() {
 
     const phishingTemplates = await readPhishingTemplates();
     const key = personaKey(personaColor, personaName);
+    const now = Date.now();
     const phishingMessages = featureEntries
       .map((entry, index) => {
         const template = phishingTemplates[entry.feature];
@@ -822,12 +823,15 @@ async function renderDetailPage() {
           ? template.sender.replace(/\{wert\}/g, entry.sharedValue)
           : template.sender;
 
+        // Gestaffelte Zeitstempel, damit die Chatübersicht sinnvoll sortiert ist
+        const timestamp = now - index * CHAT_MESSAGE_GAP_MS;
         return {
           id: `${key}-phishing-${index}`,
           type: 'incoming',
           sender,
           text: `${text}\nhttps://gewinn-link.example`,
-          time: new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
+          time: formatChatTime(timestamp),
+          timestamp,
           warningSigns: template.warning_signs || []
         };
       })
@@ -891,57 +895,134 @@ async function renderDetailPage() {
     const mailboxButton = detailCard.querySelector('.dashboard-mailbox');
     const chatOverlay = document.getElementById('persona-chat-overlay');
     const chatContainer = document.getElementById('persona-chat');
-    let activeChat;
+    const statusBar = { network: 'LTE', battery: 75 };
+    const conversations = buildConversations(phishingMessages);
+    const readStorageKey = `cookiemaster.readChats.${key}`;
+    const readSenders = new Set(readSessionList(readStorageKey));
+    let activeView = null;
+    // Anzahl eigener History-Einträge: 0 = Postfach zu, 1 = Übersicht, 2 = Chat
+    let mailboxDepth = 0;
 
-    function closeMailbox() {
+    const isRead = (conversation) => readSenders.has(conversation.name);
+    const countUnreadChats = () => conversations.filter((conversation) => !isRead(conversation)).length;
+
+    function destroyActiveView() {
+      activeView?.destroy();
+      activeView = null;
+      chatContainer.replaceChildren();
+    }
+
+    function showOverlay() {
+      chatOverlay.hidden = false;
+      document.body.classList.add('chat-modal-open');
+    }
+
+    function hideOverlay() {
       if (chatOverlay.hidden) return;
+      destroyActiveView();
       chatOverlay.hidden = true;
       document.body.classList.remove('chat-modal-open');
-      activeChat?.destroy();
-      activeChat = null;
-      chatContainer.replaceChildren();
       mailboxButton.focus();
     }
 
-    mailboxButton.addEventListener('click', () => {
-      const noMessages = phishingMessages.length === 0;
-      const chatMessages = [
-        { type: 'date', text: 'Heute' },
-        {
-          type: 'system',
-          text: noMessages
-            ? 'Für diese Persona gibt es keine Phishing-Beispiele, weil keine Merkmale freigegeben wurden.'
-            : 'Simulation – erkenne die Warnzeichen, bevor du reagierst.'
-        },
-        ...phishingMessages
-      ];
-      const phishingById = new Map(phishingMessages.map((message) => [message.id, message]));
+    function showChatList() {
+      destroyActiveView();
+      showOverlay();
+      activeView = window.createChatList(chatContainer, {
+        statusBar,
+        chats: conversations.map((conversation) => ({
+          id: conversation.id,
+          name: conversation.name,
+          avatar: '',
+          timestamp: conversation.lastMessage.timestamp,
+          time: conversation.lastMessage.time,
+          preview: conversation.lastMessage.text,
+          unreadCount: isRead(conversation) ? 0 : conversation.messages.length
+        })),
+        emptyText: 'Für diese Persona gibt es keine Phishing-Beispiele, weil keine Merkmale freigegeben wurden.',
+        closeLabel: 'Zurück zu den Persona-Details',
+        onOpen: (chatId) => navigateMailbox(chatId),
+        onClose: closeMailbox
+      });
+      chatContainer.querySelector('.chat-list-more').focus();
+    }
 
-      chatOverlay.hidden = false;
-      document.body.classList.add('chat-modal-open');
-      activeChat = window.createGameChat(chatContainer, {
+    function showConversation(conversation) {
+      readSenders.add(conversation.name);
+      writeSessionList(readStorageKey, [...readSenders]);
+      destroyActiveView();
+      showOverlay();
+
+      const phishingById = new Map(conversation.messages.map((message) => [message.id, message]));
+      const unreadChats = countUnreadChats();
+      const chat = window.createGameChat(chatContainer, {
         data: {
-          contact: {
-            name: phishingMessages[0]?.sender || 'Unbekannte Nummer',
-            avatar: '',
-            unreadCount: phishingMessages.length
-          },
-          statusBar: { network: 'LTE', battery: 75 },
-          messages: chatMessages
+          contact: { name: conversation.name, avatar: '', unreadCount: unreadChats },
+          statusBar,
+          messages: [
+            { type: 'date', text: 'Heute' },
+            { type: 'system', text: 'Simulation – erkenne die Warnzeichen, bevor du reagierst.' },
+            ...conversation.messages
+          ]
         },
-        onBack: closeMailbox,
+        onBack() {
+          if (mailboxDepth >= 2) {
+            window.history.back();
+          } else {
+            window.history.replaceState(null, '', '#chats');
+            renderMailboxRoute();
+          }
+        },
         onLinkClick(_url, messageId) {
           const message = phishingById.get(messageId);
           if (!message) return;
-          activeChat.addMessage({
+          chat.addMessage({
             type: 'system',
             text: `Warnzeichen: ${message.warningSigns.join(' · ')}`
           }, true);
         }
       });
-      chatContainer.querySelector('.chat-back').setAttribute('aria-label', 'Zurück zu den Persona-Details');
+      activeView = chat;
+      chatContainer.querySelector('.chat-unread').textContent = unreadChats ? String(unreadChats) : '';
+      chatContainer.querySelector('.chat-back').setAttribute('aria-label', 'Zurück zur Chatübersicht');
       chatContainer.querySelector('.chat-input').focus();
-    });
+    }
+
+    // Ansicht aus dem URL-Hash ableiten (#chats = Übersicht, #chat-<n> = einzelner Chat)
+    function renderMailboxRoute() {
+      const hash = window.location.hash.slice(1);
+      const conversation = conversations.find((item) => item.id === hash);
+      if (hash === 'chats') {
+        mailboxDepth = 1;
+        showChatList();
+      } else if (conversation) {
+        mailboxDepth = 2;
+        showConversation(conversation);
+      } else {
+        mailboxDepth = 0;
+        hideOverlay();
+      }
+    }
+
+    function navigateMailbox(route) {
+      window.history.pushState(null, '', `#${route}`);
+      renderMailboxRoute();
+    }
+
+    function closeMailbox() {
+      const depth = mailboxDepth;
+      mailboxDepth = 0;
+      hideOverlay();
+      if (depth > 0) window.history.go(-depth);
+    }
+
+    // Beim Neuladen mit Postfach-Hash nicht mitten im Postfach starten
+    if (/^#chat(s|-\d+)$/.test(window.location.hash)) {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+    }
+
+    mailboxButton.addEventListener('click', () => navigateMailbox('chats'));
+    window.addEventListener('popstate', renderMailboxRoute);
 
     chatOverlay.addEventListener('click', (event) => {
       if (event.target === chatOverlay) closeMailbox();
@@ -953,6 +1034,43 @@ async function renderDetailPage() {
 
   } catch (error) {
     detailCard.innerHTML = `<p class="empty-state">Details konnten nicht geladen werden: ${escapeHtml(error.message || 'Unbekannter Fehler')}</p>`;
+  }
+}
+
+const CHAT_MESSAGE_GAP_MS = 7 * 60 * 1000;
+
+function formatChatTime(timestamp) {
+  return new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' }).format(new Date(timestamp));
+}
+
+// Eine Konversation pro Absender, Nachrichten darin chronologisch
+function buildConversations(messages) {
+  const bySender = new Map();
+  messages.forEach((message) => {
+    if (!bySender.has(message.sender)) bySender.set(message.sender, []);
+    bySender.get(message.sender).push(message);
+  });
+  return [...bySender].map(([sender, items], index) => {
+    const sorted = [...items].sort((a, b) => a.timestamp - b.timestamp);
+    return { id: `chat-${index + 1}`, name: sender, messages: sorted, lastMessage: sorted[sorted.length - 1] };
+  });
+}
+
+// Gelesene Chats nur für diese Browser-Sitzung merken
+function readSessionList(key) {
+  try {
+    const value = JSON.parse(window.sessionStorage.getItem(key) || '[]');
+    return Array.isArray(value) ? value : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function writeSessionList(key, values) {
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify(values));
+  } catch (error) {
+    // Ohne sessionStorage gilt „gelesen“ nur bis zum Neuladen
   }
 }
 
