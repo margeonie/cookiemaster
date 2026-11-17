@@ -234,12 +234,22 @@ async function readCsvFile() {
   return parseCsv(await response.text());
 }
 
-async function readPassJsonFile() {
-  const response = await fetch('../data/freigaben.json', { cache: 'no-store' });
-  if (!response.ok) {
-    throw new Error('freigaben.json konnte nicht geladen werden.');
+// Ohne hochgeladenen Pass: alle Personas spielen mit, aber kein Merkmal ist freigegeben.
+function buildEmptyPassData(csvData) {
+  const headers = csvData.headers || [];
+  const nameColumn = getPersonaNameColumn(headers);
+  const colorColumn = headers.find((header) => normalizePersonName(header) === 'farbe');
+  if (!colorColumn) throw new Error('CSV-Spalte „Farbe“ fehlt.');
+  const merkmale = getPersonaFeatures(headers).map(normalizeUnicode).filter(Boolean);
+  const personas = {};
+  for (const row of csvData.rows || []) {
+    const color = normalizeUnicode(row[colorColumn]);
+    const name = normalizeUnicode(row[nameColumn]);
+    if (!color || !name) continue;
+    personas[color] = personas[color] || {};
+    personas[color][name] = Object.fromEntries(merkmale.map((feature) => [feature, false]));
   }
-  return response.json();
+  return { merkmale, personas, ausgeschlossen: {} };
 }
 
 // Hochgeladene Pässe werden im Browser gespeichert, damit auch die Detailseite sie kennt.
@@ -261,11 +271,25 @@ function storePassData(data) {
   }
 }
 
-// Zuletzt hochgeladene Pässe, sonst die Beispieldaten aus freigaben.json
+// Zuletzt hochgeladene Pässe, sonst keine Freigaben (als wäre kein Pass hochgeladen)
 async function readPassData() {
   const stored = readStoredPassData();
   if (stored) return stored;
-  return { data: await readPassJsonFile(), savedAt: null };
+  return { data: buildEmptyPassData(await readCsvFile()), savedAt: null };
+}
+
+// Neu hochgeladene Pässe sollen in der Übersicht einmal animiert erscheinen.
+const SHOWN_PASS_KEY = 'cookiemaster.shownPass';
+function consumeNewPassAnimation() {
+  try {
+    const stored = readStoredPassData();
+    if (!stored || !stored.savedAt) return false;
+    if (window.localStorage.getItem(SHOWN_PASS_KEY) === stored.savedAt) return false;
+    window.localStorage.setItem(SHOWN_PASS_KEY, stored.savedAt);
+    return true;
+  } catch (error) {
+    return false;
+  }
 }
 
 function formatSavedAt(savedAt) {
@@ -506,7 +530,6 @@ async function renderOverviewPage({ animateCounts = false } = {}) {
   const shouldAnimateCounts = animateCounts && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const colorFilter = document.getElementById('persona-color-filter');
   const resetButton = document.getElementById('reset-freigaben');
-  const loadButton = document.getElementById('load-freigaben');
 
   function applyColorFilter() {
     const selectedColor = normalizePersonName(colorFilter?.value || 'alle');
@@ -520,70 +543,15 @@ async function renderOverviewPage({ animateCounts = false } = {}) {
   if (colorFilter) colorFilter.onchange = applyColorFilter;
   if (resetButton) {
     resetButton.onclick = async () => {
-      if (!freigabenData) return;
       cancelPersonaCountAnimation();
-      freigabenData = JSON.parse(JSON.stringify(freigabenData));
-      for (const personas of Object.values(freigabenData.personas || {})) {
-        for (const flags of Object.values(personas || {})) {
-          for (const feature of freigabenData.merkmale || []) {
-            const featureKey = findNormalizedKey(flags, feature, normalizeUnicode);
-            if (featureKey) flags[featureKey] = false;
-          }
-        }
-      }
-      updateUploadStatusBar('Reset aktiv – alle Merkmale werden als nicht freigegeben angezeigt.', 'warning');
-      await renderOverviewPage();
-    };
-  }
-  if (loadButton) {
-    loadButton.onclick = async () => {
-      preparePersonaAudio();
-      const gruenFile = document.getElementById('pass-gruen')?.files[0];
-      const orangeFile = document.getElementById('pass-orange')?.files[0];
-      if (Boolean(gruenFile) !== Boolean(orangeFile)) {
-        updateUploadStatusBar('Bitte beide Datensammelpässe auswählen – den grünen und den orangen.', 'error');
-        return;
-      }
-
-      loadButton.disabled = true;
-      cancelPersonaCountAnimation();
-      list.querySelectorAll('.persona-card').forEach((card) => {
-        const badge = card.querySelector('.phishing-badge');
-        if (badge) {
-          badge.querySelector('.phishing-count').textContent = '0';
-          badge.setAttribute('aria-label', '0 Phishing-Nachrichten');
-          badge.title = '0 Phishing-Nachrichten';
-        }
-        card.dataset.currentCount = '0';
-        card.classList.add('count-complete');
-      });
       try {
-        let scan = null;
-        if (gruenFile && orangeFile) {
-          try {
-            scan = await scanUploadedPasses(gruenFile, orangeFile);
-          } catch (error) {
-            updateUploadStatusBar(`Auswertung fehlgeschlagen: ${error.message || error}`, 'error');
-            await renderOverviewPage();
-            return;
-          }
-        } else {
-          updateUploadStatusBar('Freigaben werden neu geladen…');
-        }
-
-        await loadPassStateForDisplay();
-        if (scan && !scan.saved) {
-          // Ohne Browser-Speicher nur für diese Seite verwenden
-          freigabenData = scan.data;
-          freigabenError = null;
-          updateUploadStatusBar('Ausgewertet – konnte im Browser nicht gespeichert werden, die Detailseiten zeigen daher die Beispieldaten.', 'warning');
-        } else if (scan && scan.uncertain.length) {
-          updateUploadStatusBar(`Ausgewertet – bitte prüfen (zählt als nicht freigegeben): ${scan.uncertain.join(', ')}`, 'warning');
-        }
-        await renderOverviewPage({ animateCounts: true });
-      } finally {
-        loadButton.disabled = false;
+        window.localStorage.removeItem(STORED_PASS_KEY);
+        window.localStorage.removeItem(SHOWN_PASS_KEY);
+      } catch (error) {
+        console.warn('Gespeicherter Datensammelpass konnte nicht gelöscht werden.', error);
       }
+      await loadPassStateForDisplay();
+      await renderOverviewPage();
     };
   }
 
@@ -659,6 +627,46 @@ async function renderOverviewPage({ animateCounts = false } = {}) {
   } catch (error) {
     list.innerHTML = '<p class="empty-state">Personas konnten nicht geladen werden.</p>';
   }
+}
+
+function renderUploadPage() {
+  const loadButton = document.getElementById('load-freigaben');
+  if (!loadButton) return;
+
+  loadButton.onclick = async () => {
+    const gruenFile = document.getElementById('pass-gruen')?.files[0];
+    const orangeFile = document.getElementById('pass-orange')?.files[0];
+    if (Boolean(gruenFile) !== Boolean(orangeFile)) {
+      updateUploadStatusBar('Bitte beide Datensammelpässe auswählen – den grünen und den orangen.', 'error');
+      return;
+    }
+
+    loadButton.disabled = true;
+    try {
+      let scan = null;
+      if (gruenFile && orangeFile) {
+        try {
+          scan = await scanUploadedPasses(gruenFile, orangeFile);
+        } catch (error) {
+          updateUploadStatusBar(`Auswertung fehlgeschlagen: ${error.message || error}`, 'error');
+          return;
+        }
+      } else {
+        updateUploadStatusBar('Freigaben werden neu geladen…');
+      }
+
+      await loadPassStateForDisplay();
+      if (scan && !scan.saved) {
+        freigabenData = scan.data;
+        freigabenError = null;
+        updateUploadStatusBar('Ausgewertet – konnte im Browser nicht gespeichert werden, Übersicht und Detailseiten zeigen daher keine Merkmale.', 'warning');
+      } else if (scan && scan.uncertain.length) {
+        updateUploadStatusBar(`Ausgewertet – bitte prüfen (zählt als nicht freigegeben): ${scan.uncertain.join(', ')}`, 'warning');
+      }
+    } finally {
+      loadButton.disabled = false;
+    }
+  };
 }
 
 function startPersonaCountAnimation(list) {
@@ -981,8 +989,11 @@ async function loadPassStateForDisplay() {
     freigabenData = result.data;
     const source = result.savedAt
       ? `Datensammelpässe vom ${formatSavedAt(result.savedAt)} geladen`
-      : 'Beispieldaten geladen';
-    if (result.warning) {
+      : 'Noch kein Datensammelpass hochgeladen';
+    if (!result.savedAt) {
+      status.textContent = source;
+      status.className = 'status-bar status-empty';
+    } else if (result.warning) {
       status.textContent = `${source} – einige Einträge sind ungültig oder fehlen.`;
       status.className = 'status-bar warning';
     } else {
@@ -1000,7 +1011,20 @@ async function initPage() {
   await loadPassStateForDisplay();
 
   if (document.body.dataset.page === 'overview') {
-    renderOverviewPage();
+    // Nachrichtenton braucht eine Nutzerinteraktion, bevor er abgespielt werden darf
+    document.addEventListener('pointerdown', preparePersonaAudio, { once: true });
+    renderOverviewPage({ animateCounts: consumeNewPassAnimation() });
+
+    // Upload in einem anderen Tab: Übersicht direkt aktualisieren
+    window.addEventListener('storage', async (event) => {
+      if (event.key !== STORED_PASS_KEY) return;
+      await loadPassStateForDisplay();
+      renderOverviewPage({ animateCounts: consumeNewPassAnimation() });
+    });
+  }
+
+  if (document.body.dataset.page === 'upload') {
+    renderUploadPage();
   }
 
   if (document.body.dataset.page === 'detail') {

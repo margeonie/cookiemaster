@@ -190,6 +190,12 @@ h1 {
   cursor: pointer;
 }
 
+.link-button {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
 .secondary-button[hidden] {
   display: none;
 }
