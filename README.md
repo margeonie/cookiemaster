@@ -33,17 +33,22 @@ Die Auswertung der Fotos läuft komplett im Browser. Die Bilder werden nirgendwo
 4. In der Übersicht auf **Datensammelpässe hochladen** klicken. Auf der Upload-Seite beim **grünen** und
    beim **orangen Datensammelpass** jeweils das Foto auswählen und auf **Laden** klicken. Beim ersten Mal
    wird die Bilderkennung geladen (ca. 10 MB), danach dauert die Auswertung einige Sekunden.
-5. **Auflösung:** Zurück zur Übersicht. Die Phishing-Zähler laufen einmal hoch, und die Personas sortieren
+5. **Prüfen und freigeben:** Unter **Erkannte Kreuze prüfen und freigeben** erscheint, was erkannt wurde.
+   Falsch erkannte Kreuze lassen sich per Klick auf die Zelle an- oder ausschalten, **Zurücksetzen** stellt
+   das Erkennungsergebnis wieder her. Erst **Daten freigeben** übernimmt den Stand – vorher ändert sich in
+   der Übersicht nichts.
+6. **Auflösung:** Zurück zur Übersicht. Die Phishing-Zähler laufen einmal hoch, und die Personas sortieren
    sich danach, wie viel sie geteilt haben. Tipp: Die Übersicht kann auch in einem zweiten Tab offen sein
    (z. B. am Beamer) – sie aktualisiert sich nach dem Upload automatisch. Der Nachrichtenton erklingt erst,
    nachdem einmal in die Übersicht geklickt wurde.
-6. Eine Persona anklicken und das **Postfach** öffnen. Es erscheint eine Chatübersicht mit einem Chat pro
+7. Eine Persona anklicken und das **Postfach** öffnen. Es erscheint eine Chatübersicht mit einem Chat pro
    Absender. Ein Klick auf einen Chat zeigt die Phishing-Nachricht, ein Klick auf den Link darin die
    Warnzeichen.
 
-Auf der Upload-Seite zeigt **Erkannte Kreuze prüfen**, was die App auf den Fotos erkannt hat. Unsichere
-Kreuze sind mit **?** markiert und zählen als *nicht freigegeben*. Ist etwas falsch erkannt, hilft meist
-ein neues, geraderes Foto.
+Auf der Upload-Seite zeigt **Erkannte Kreuze prüfen und freigeben**, was die App auf den Fotos erkannt hat.
+Unsichere Kreuze sind mit **?** markiert und starten als *nicht freigegeben*. Jede Zelle lässt sich per Klick
+umschalten; Zellen, die von der Erkennung abweichen, sind umrandet. Wer die Seite vor **Daten freigeben**
+verlässt, wird gewarnt – der zuvor freigegebene Stand bleibt dann unverändert.
 
 Solange keine Pässe hochgeladen wurden, sind bei allen Personas **keine Merkmale freigegeben** – alle
 Zähler stehen auf 0. Das Ergebnis eines Uploads bleibt im Browser gespeichert, bis neue Pässe geladen
@@ -108,8 +113,16 @@ Das Skript gibt die erkannte Matrix in der Konsole aus und schreibt sie nach `da
 Debug-Bilder zeigen das erkannte Raster und den Tintenanteil pro Zelle. Beide Ausgaben werden von Git
 ignoriert.
 
-Hochgeladene Pässe speichert die App im `localStorage` unter `cookiemaster.freigaben`. Die Gelesen-Markierung
+Freigegebene Pässe speichert die App im `localStorage` unter `cookiemaster.freigaben` – erst beim Klick auf
+**Daten freigeben**, und nur die im Review geprüften Werte. Die Logik dafür liegt in `review-state.js`.
+Die Gelesen-Markierung
 der Chats liegt im `sessionStorage` unter `cookiemaster.readChats.<persona>`.
+
+### Tests
+
+Die Review-Logik hat Tests ohne Abhängigkeiten: Server starten (siehe oben) und
+`http://localhost:8000/tests/review.test.html` öffnen. Mit installiertem Node laufen dieselben Tests auch
+über `node --test tests/`.
 
 ### Projektstruktur
 
@@ -120,6 +133,8 @@ html/upload.html              Upload und Auswertung der Datensammelpässe
 html/detail.html              Detailseite einer Persona mit Postfach
 script.js                     App-Logik (Daten laden, prüfen, anzeigen, Postfach-Navigation)
 pass-scanner.js               Bilderkennung im Browser
+review-state.js               Review der erkannten Kreuze (Toggles, Reset, Freigabe)
+tests/                        Tests für review-state.js (review.test.html im Browser öffnen)
 vendor/opencv.js              OpenCV für den Browser (Apache 2.0)
 chat.js, chat.css             Messenger-Komponente (Chatübersicht und Chat)
 styles.css                    Allgemeines Layout

@@ -6,6 +6,8 @@ let freigabenError = null;
 let personaCountTimer = null;
 let personaPositionAnimations = [];
 let personaAudioContext = null;
+// Aktueller Review auf der Upload-Seite (siehe review-state.js), null = kein Review offen
+let reviewSession = null;
 
 function preparePersonaAudio() {
   const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
@@ -318,31 +320,87 @@ async function scanUploadedPasses(gruenFile, orangeFile) {
   updateUploadStatusBar('Datensammelpässe werden ausgewertet…');
   // Kurz warten, damit die Statusmeldung vor der Rechenarbeit angezeigt wird
   await new Promise((resolve) => window.setTimeout(resolve, 50));
-  const { data, uncertain, results } = await window.PassScanner.scanPasses(passes, featureNames);
-  renderScanReview(results, featureNames);
-  return { data, uncertain, saved: storePassData(data) };
+  // Nur Zwischenstand: Gespeichert (und damit freigegeben) wird erst über „Daten freigeben“.
+  const { uncertain, results } = await window.PassScanner.scanPasses(passes, featureNames);
+  return { results, uncertain, featureNames };
 }
 
-function renderScanReview(results, featureNames) {
-  const review = document.getElementById('scan-review');
-  const tables = document.getElementById('scan-review-tables');
-  if (!review || !tables) return;
-  const cellLabel = { X: '✓', '!': '?', '': '', '-': '–' };
-  const cellClass = { X: 'marked', '!': 'uncertain' };
+function reviewCellLabel(cell) {
+  if (cell.final) return '✓';
+  return cell.scan === '!' ? '?' : '';
+}
 
-  tables.innerHTML = Object.entries(results).map(([color, result]) => `
+function reviewCellClass(cell) {
+  return [
+    'review-cell',
+    cell.final ? 'marked' : cell.scan === '!' ? 'uncertain' : '',
+    cell.final !== cell.detected ? 'changed' : ''
+  ].filter(Boolean).join(' ');
+}
+
+function reviewCellTitle(cell) {
+  const detected = cell.detected ? 'freigegeben' : cell.scan === '!' ? 'unsicher' : 'nicht freigegeben';
+  return `Erkannt: ${detected} – jetzt: ${cell.final ? 'freigegeben' : 'nicht freigegeben'}`;
+}
+
+function updateReviewCell(button, cell) {
+  button.textContent = reviewCellLabel(cell);
+  button.setAttribute('aria-pressed', String(cell.final));
+  button.title = reviewCellTitle(cell);
+  button.parentElement.className = reviewCellClass(cell);
+}
+
+function updateReviewActions(session) {
+  const summary = document.getElementById('review-summary');
+  const resetButton = document.getElementById('review-reset');
+  const releaseButton = document.getElementById('release-freigaben');
+  const changes = session.changeCount();
+  const released = session.isReleased();
+  const changeText = changes === 0
+    ? 'Keine Änderungen gegenüber der Erkennung'
+    : `${changes} Änderung${changes === 1 ? '' : 'en'} gegenüber der Erkennung`;
+  if (summary) {
+    summary.textContent = released
+      ? `${changeText} – freigegeben.`
+      : `${changeText} – noch nicht freigegeben.`;
+  }
+  if (resetButton) resetButton.disabled = changes === 0;
+  if (releaseButton) {
+    releaseButton.disabled = released;
+    releaseButton.textContent = released ? 'Freigegeben ✓' : 'Daten freigeben';
+  }
+}
+
+// Review-Matrix: Jede Zelle ist ein Toggle, Startwert ist das Erkennungsergebnis.
+function renderScanReview(session) {
+  const section = document.getElementById('scan-review');
+  const tables = document.getElementById('scan-review-tables');
+  if (!section || !tables) return;
+  const { review } = session;
+
+  tables.innerHTML = review.passes.map(({ color, persons }, passIndex) => `
     <div class="pass-preview-card">
       <h3>${escapeHtml(color)}</h3>
       <div class="table-wrap">
         <table class="pass-matrix-table">
           <thead>
-            <tr><th>Persona</th>${featureNames.map((feature) => `<th>${escapeHtml(feature)}</th>`).join('')}</tr>
+            <tr><th>Persona</th>${review.merkmale.map((feature) => `<th>${escapeHtml(feature)}</th>`).join('')}</tr>
           </thead>
           <tbody>
-            ${result.matrix.slice(1).map(([person, ...values]) => `
+            ${persons.map((person, personIndex) => `
               <tr>
-                <th>${escapeHtml(person)}${result.struck.includes(person) ? ' (gestrichen)' : ''}</th>
-                ${values.map((value) => `<td class="${cellClass[value] || ''}">${cellLabel[value]}</td>`).join('')}
+                <th>${escapeHtml(person.name)}${person.struck ? ' (gestrichen)' : ''}</th>
+                ${person.struck
+                  ? review.merkmale.map(() => '<td>–</td>').join('')
+                  : person.cells.map((cell, featureIndex) => `
+                    <td class="${reviewCellClass(cell)}">
+                      <button class="review-toggle" type="button"
+                        data-pass="${passIndex}" data-person="${personIndex}" data-feature="${featureIndex}"
+                        aria-pressed="${cell.final}"
+                        aria-label="${escapeHtml(`${color} / ${person.name} / ${cell.feature}`)}"
+                        title="${escapeHtml(reviewCellTitle(cell))}">${reviewCellLabel(cell)}</button>
+                    </td>
+                  `).join('')}
               </tr>
             `).join('')}
           </tbody>
@@ -351,8 +409,55 @@ function renderScanReview(results, featureNames) {
     </div>
   `).join('');
   tables.insertAdjacentHTML('beforeend',
-    '<p class="pass-preview-note">✓ = freigegeben, ? = unsicher (zählt als nicht freigegeben), – = Persona spielt nicht mit</p>');
-  review.hidden = false;
+    '<p class="pass-preview-note">Klick auf eine Zelle schaltet die Freigabe um. ✓ = freigegeben, ? = unsicher erkannt (nicht freigegeben), – = Persona spielt nicht mit. Umrandete Zellen weichen von der Erkennung ab.</p>');
+
+  tables.onclick = (event) => {
+    const button = event.target.closest('.review-toggle');
+    if (!button) return;
+    const pass = review.passes[Number(button.dataset.pass)];
+    const person = pass.persons[Number(button.dataset.person)];
+    const cell = person.cells[Number(button.dataset.feature)];
+    session.toggle(pass.color, person.name, cell.feature);
+    updateReviewCell(button, cell);
+    updateReviewActions(session);
+  };
+
+  const resetButton = document.getElementById('review-reset');
+  if (resetButton) {
+    resetButton.onclick = () => {
+      session.reset();
+      renderScanReview(session);
+    };
+  }
+
+  const releaseButton = document.getElementById('release-freigaben');
+  if (releaseButton) {
+    releaseButton.onclick = () => {
+      const saved = session.release();
+      if (saved) {
+        updateUploadStatusBar('Daten freigegeben – Übersicht und Postfächer zeigen jetzt diesen Stand.', 'active');
+      } else {
+        updateUploadStatusBar('Freigabe konnte im Browser nicht gespeichert werden. Bitte erneut versuchen.', 'error');
+      }
+      updateReviewActions(session);
+    };
+  }
+
+  updateReviewActions(session);
+  section.hidden = false;
+}
+
+function startReview(scan) {
+  // Nachgelagerter Prozess (Speichern → Übersicht/Detailseite/anderer Tab) nur über „Daten freigeben“
+  reviewSession = window.FreigabeReview.createReviewSession(scan.results, scan.featureNames, storePassData);
+  renderScanReview(reviewSession);
+  const uncertainText = scan.uncertain.length
+    ? ` Unsicher erkannt (startet als nicht freigegeben): ${scan.uncertain.join(', ')}`
+    : '';
+  updateUploadStatusBar(
+    `Ausgewertet – bitte prüfen, ggf. korrigieren und mit „Daten freigeben“ übernehmen.${uncertainText}`,
+    'warning'
+  );
 }
 
 function normalizePassData(rawPassData, csvData) {
@@ -633,6 +738,13 @@ function renderUploadPage() {
   const loadButton = document.getElementById('load-freigaben');
   if (!loadButton) return;
 
+  // Ungeprüfte bzw. nicht freigegebene Änderungen nicht stillschweigend verlieren
+  window.addEventListener('beforeunload', (event) => {
+    if (!reviewSession || reviewSession.isReleased()) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
+
   loadButton.onclick = async () => {
     const gruenFile = document.getElementById('pass-gruen')?.files[0];
     const orangeFile = document.getElementById('pass-orange')?.files[0];
@@ -643,26 +755,20 @@ function renderUploadPage() {
 
     loadButton.disabled = true;
     try {
-      let scan = null;
       if (gruenFile && orangeFile) {
+        let scan;
         try {
           scan = await scanUploadedPasses(gruenFile, orangeFile);
         } catch (error) {
           updateUploadStatusBar(`Auswertung fehlgeschlagen: ${error.message || error}`, 'error');
           return;
         }
-      } else {
-        updateUploadStatusBar('Freigaben werden neu geladen…');
+        startReview(scan);
+        return;
       }
 
+      updateUploadStatusBar('Freigaben werden neu geladen…');
       await loadPassStateForDisplay();
-      if (scan && !scan.saved) {
-        freigabenData = scan.data;
-        freigabenError = null;
-        updateUploadStatusBar('Ausgewertet – konnte im Browser nicht gespeichert werden, Übersicht und Detailseiten zeigen daher keine Merkmale.', 'warning');
-      } else if (scan && scan.uncertain.length) {
-        updateUploadStatusBar(`Ausgewertet – bitte prüfen (zählt als nicht freigegeben): ${scan.uncertain.join(', ')}`, 'warning');
-      }
     } finally {
       loadButton.disabled = false;
     }

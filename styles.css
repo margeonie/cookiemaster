@@ -126,9 +126,31 @@ h1 {
   cursor: progress;
 }
 
-.scan-review summary {
+.scan-review h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.review-summary {
+  flex: 1 1 16rem;
+  margin: 0;
+  color: var(--muted);
   font-weight: 700;
-  cursor: pointer;
+}
+
+.review-actions .primary-button:disabled,
+.secondary-button:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .scan-review[hidden] {
@@ -664,6 +686,36 @@ h1 {
   background: rgba(234, 179, 8, 0.15);
   color: #92400e;
   font-weight: 700;
+}
+
+.pass-matrix-table td.review-cell {
+  padding: 0;
+}
+
+.pass-matrix-table td.changed {
+  box-shadow: inset 0 0 0 3px var(--primary);
+}
+
+.review-toggle {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 2.6rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.review-toggle:hover {
+  background: rgba(168, 85, 247, 0.08);
+}
+
+.review-toggle:focus-visible {
+  outline: 3px solid var(--primary-dark);
+  outline-offset: -3px;
 }
 
 .pass-preview-note {

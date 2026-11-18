@@ -30,14 +30,20 @@
           </label>
           <button id="load-freigaben" class="primary-button" type="button">Laden</button>
         </div>
-        <details id="scan-review" class="scan-review" hidden>
-          <summary>Erkannte Kreuze prüfen</summary>
+        <section id="scan-review" class="scan-review" aria-labelledby="scan-review-title" hidden>
+          <h2 id="scan-review-title">Erkannte Kreuze prüfen und freigeben</h2>
           <div id="scan-review-tables" class="scan-review-tables"></div>
-        </details>
+          <div class="review-actions">
+            <p id="review-summary" class="review-summary" aria-live="polite"></p>
+            <button id="review-reset" class="secondary-button" type="button">Zurücksetzen</button>
+            <button id="release-freigaben" class="primary-button" type="button">Daten freigeben</button>
+          </div>
+        </section>
       </section>
     </main>
 
     <script src="../pass-scanner.js"></script>
+    <script src="../review-state.js"></script>
     <script src="../script.js"></script>
   </body>
 </html>

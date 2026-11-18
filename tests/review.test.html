@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Review-Tests</title>
+    <style>
+      body { margin: 0; padding: 1.5rem 16px; font-family: Arial, sans-serif; background: #f9fbff; color: #1f2937; }
+      h1 { font-size: 1.4rem; margin: 0 0 1rem; }
+      #summary { font-weight: 700; padding: 0.7rem 1rem; border-radius: 12px; margin-bottom: 1rem; }
+      #summary.pass { background: rgba(22, 101, 52, 0.1); color: #166534; }
+      #summary.fail { background: rgba(185, 28, 28, 0.08); color: #b91c1c; }
+      ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.4rem; }
+      li { padding: 0.5rem 0.75rem; border-radius: 8px; background: #fff; border: 1px solid #e5e7eb; }
+      li.fail { border-color: #b91c1c; }
+      pre { white-space: pre-wrap; margin: 0.4rem 0 0; color: #b91c1c; font-size: 0.85rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Tests: Review der erkannten Kreuze</h1>
+    <div id="summary">Tests laufen…</div>
+    <ul id="results"></ul>
+
+    <script>
+      // Minimaler Test-Runner ohne Abhängigkeiten (gleiche API wie node:test / node:assert)
+      (function () {
+        const results = [];
+
+        function fail(message) { throw new Error(message); }
+        function deepEqual(a, b) {
+          if (Object.is(a, b)) return true;
+          if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+          if (Array.isArray(a) !== Array.isArray(b)) return false;
+          const keysA = Object.keys(a);
+          const keysB = Object.keys(b);
+          return keysA.length === keysB.length && keysA.every((key) => keysB.includes(key) && deepEqual(a[key], b[key]));
+        }
+        const show = (value) => JSON.stringify(value);
+
+        window.browserAssert = {
+          equal(actual, expected) {
+            if (!Object.is(actual, expected)) fail(`Erwartet ${show(expected)}, erhalten ${show(actual)}`);
+          },
+          deepEqual(actual, expected) {
+            if (!deepEqual(actual, expected)) fail(`Erwartet\n${show(expected)}\nerhalten\n${show(actual)}`);
+          },
+          throws(fn) {
+            try { fn(); } catch (error) { return; }
+            fail('Erwartet wurde ein Fehler, es kam keiner.');
+          }
+        };
+
+        window.browserTest = (name, fn) => {
+          try {
+            fn();
+            results.push({ name, ok: true });
+          } catch (error) {
+            results.push({ name, ok: false, error });
+          }
+        };
+
+        window.showTestResults = () => {
+          const list = document.getElementById('results');
+          results.forEach(({ name, ok, error }) => {
+            const item = document.createElement('li');
+            item.className = ok ? 'pass' : 'fail';
+            item.textContent = `${ok ? '✓' : '✗'} ${name}`;
+            if (!ok) {
+              const details = document.createElement('pre');
+              details.textContent = error && error.message ? error.message : String(error);
+              item.appendChild(details);
+            }
+            list.appendChild(item);
+          });
+          const failed = results.filter((result) => !result.ok).length;
+          const summary = document.getElementById('summary');
+          summary.className = failed || !results.length ? 'fail' : 'pass';
+          summary.textContent = !results.length
+            ? 'Keine Tests gefunden – wurde die Seite über einen Webserver geöffnet?'
+            : failed
+              ? `${failed} von ${results.length} Tests fehlgeschlagen`
+              : `Alle ${results.length} Tests bestanden`;
+        };
+      })();
+    </script>
+    <script src="../review-state.js"></script>
+    <script src="review-state.test.js"></script>
+    <script>window.showTestResults();</script>
+  </body>
+</html>
